@@ -71,7 +71,7 @@ class LbrynetTest(unittest.TestCase):
         # test publish and download of non free content
         self._test_publish('testname2',1,1)
         self._test_update()
-
+        self._test_abandon() 
         # TODO: should try to remove all errors here, raise error if found
         print("Printing ERRORS found in log:")
         out,err = shell_command('grep ERROR {}'.format(DOCKER_LOG_FILE))
@@ -138,6 +138,9 @@ class LbrynetTest(unittest.TestCase):
     def _send_from_lbrycrd(self, amount, to_lbrynet):
         prev_balance = to_lbrynet.get_balance()
         address = to_lbrynet.get_new_address()
+        out = to_lbrynet.wallet_public_key(address)
+        self.assertEqual(len(out), 1)
+
         out = call_lbrycrd('sendtoaddress',address,amount)
         self._is_txid(out)
         self._increment_blocks(6)
@@ -355,6 +358,18 @@ class LbrynetTest(unittest.TestCase):
         self.assertEqual(1, len(out))
         blob_hash = out[0]
 
+        # test download of own descriptor
+        out = lbrynets['lbrynet'].descriptor_get({'sd_hash':sd_hash})
+        self.assertTrue('blobs' in out)
+        self.assertEqual(2, len(out['blobs']))
+        self.assertEqual(blob_hash, out['blobs'][0]['blob_hash'])
+        self.assertTrue('key' in out)
+        self.assertTrue('stream_hash' in out)
+        self.assertTrue('stream_name' in out)
+        self.assertTrue('stream_type' in out)
+        self.assertTrue('suggested_file_name' in out)
+
+
         # check reflector to see if it has hashes
         out = lbrynets['reflector'].get_blob_hashes()
         self.assertTrue(sd_hash in out)
@@ -404,6 +419,7 @@ class LbrynetTest(unittest.TestCase):
 
 
         # test file_delete on dht, keep file list on dht empty
+
         out = lbrynets['dht'].file_delete({'sd_hash':sd_hash})
         self.assertEqual(True,out)
         self.assertFalse(self._check_has_file('dht',expected_download_file))
@@ -437,6 +453,34 @@ class LbrynetTest(unittest.TestCase):
         self.assertEqual(update_publish_txid, out['txid'])
         self.assertEqual(update_publish_nout, out['nout'])
         self.assertEqual(update_amount, out['amount'])
+
+        # check file_list
+        out = lbrynets['lbrynet'].file_list({'name':claim_name})
+        self.assertEqual(2,len(out))
+
+    @print_func
+    def _test_abandon(self, claim_name='abandontest', claim_amount=1, key_fee=0):
+        test_pub_file_name = claim_name+'.txt'
+        test_pub_file_dir = '/src/lbry'
+        test_pub_file = os.path.join(test_pub_file_dir,test_pub_file_name)
+        expected_download_file = os.path.join('/data/Downloads/',test_pub_file_name)
+
+        # publish
+        publish_txid, publish_nout, claim_id, key_fee_address = self._publish(claim_name, claim_amount, key_fee, test_pub_file, 1024)
+
+        # abandon
+        out = lbrynets['lbrynet'].claim_abandon({'txid':publish_txid,'nout':publish_nout})
+        self.assertTrue('txid' in out)
+        self.assertTrue('fee' in out)
+        self.assertTrue('tx' in out)
+
+        self._wait_for_lbrynet_sync()
+        self._increment_blocks(6)
+
+        # check claimtrie state
+        out = lbrynets['lbrynet'].claim_show({'name':claim_name})
+        self.assertEqual(False, out)
+
 
 if __name__ == '__main__':
 
