@@ -138,7 +138,7 @@ class LbrynetTest(unittest.TestCase):
     def _send_from_lbrycrd(self, amount, to_lbrynet):
         prev_balance = to_lbrynet.get_balance()
         address = to_lbrynet.get_new_address()
-        out = to_lbrynet.wallet_public_key(address)
+        out = to_lbrynet.wallet_public_key({'address':address})
         self.assertEqual(len(out), 1)
 
         out = call_lbrycrd('sendtoaddress',address,amount)
