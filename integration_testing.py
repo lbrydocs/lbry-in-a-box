@@ -32,7 +32,7 @@ lbrynets['reflector'] = JSONRPCProxy.from_url("http://localhost:{}/lbryapi".form
 
 test_metadata = {
     'license': 'NASA',
-    'ver': '0.0.3',
+    #'ver': '0.0.3',
     'description': 'test_description',
     'language': 'en',
     'author': 'test_author',
@@ -69,9 +69,9 @@ class LbrynetTest(unittest.TestCase):
         # test publish and download of free content
         self._test_publish('testname',1,)
         # test publish and download of non free content
-        self._test_publish('testname2',1,1)
+        self._test_publish('testname2',1,1.0)
         self._test_update()
-        self._test_abandon() 
+        self._test_abandon()
         # TODO: should try to remove all errors here, raise error if found
         print("Printing ERRORS found in log:")
         out,err = shell_command('grep ERROR {}'.format(DOCKER_LOG_FILE))
@@ -184,7 +184,7 @@ class LbrynetTest(unittest.TestCase):
     def _test_recv_and_send(self):
         RECV_AMOUNT = 10
         SEND_AMOUNT = 1
-        LBRYNET_SEND_SYNC_TIMEOUT = 60
+        LBRYNET_SEND_SYNC_TIMEOUT = 80
         self._send_from_lbrycrd(RECV_AMOUNT,lbrynets['lbrynet'])
 
         # create lbrycrd address
@@ -215,6 +215,8 @@ class LbrynetTest(unittest.TestCase):
         if key_fee != 0:
             key_fee_address = lbrynets['lbrynet'].get_new_address()
             test_metadata["fee"]= {'LBC': {"address": key_fee_address, "amount": key_fee}}
+        elif key_fee == 0 and 'fee' in test_metadata:
+            del test_metadata['fee']
 
         self._generate_test_file('lbrynet', test_pub_file_size, test_pub_file)
 
@@ -274,7 +276,7 @@ class LbrynetTest(unittest.TestCase):
         self.assertEqual(publish_nout, out['nout'])
         self.assertEqual(claim_amount, out['amount'])
         self.assertEqual([],out['supports'])
-        sd_hash = out['value']['sources']['lbry_sd_hash']
+        sd_hash = out['value']['stream']['source']['source']
 
         out = lbrynets['lbrynet'].claim_list_mine()
         found = False
@@ -295,20 +297,23 @@ class LbrynetTest(unittest.TestCase):
 
         expected_metadata={
             'license':test_metadata['license'],
-            'ver':test_metadata['ver'],
+            #'ver':test_metadata['ver'],
             'language':test_metadata['language'],
             'author':test_metadata['author'],
             'title':test_metadata['title'],
-            'sources':{'lbry_sd_hash':sd_hash},
+            #'sources':{'lbry_sd_hash':sd_hash},
             'nsfw':test_metadata['nsfw'],
-            'content_type':'text/plain',
+            #'content_type':'text/plain',
             'description':test_metadata['description']
         }
         if key_fee != 0:
-            expected_metadata['fee'] = {'LBC': {"address": key_fee_address, "amount": key_fee}}
-
+            #expected_metadata['fee'] = {'LBC': {"address": key_fee_address, "amount": key_fee}}
+            expected_metadata['fee'] = {'currency':'LBC','address':key_fee_address,'amount':key_fee,'version':'_0_0_1'}
         out = lbrynets['lbrynet'].resolve_name({'name':claim_name})
-        self.assertTrue(self._compare_dict(expected_metadata,out))
+        metadata = out['stream']['metadata']
+        print metadata
+        #TODO: need to compare entire claim_dict here
+        self.assertTrue(self._compare_dict(expected_metadata,metadata))
 
         # TODO:need to check stream hash, points paid, written_bytes,
         # completed, stopped
@@ -327,7 +332,7 @@ class LbrynetTest(unittest.TestCase):
         # test download of own file
         out = lbrynets['lbrynet'].get({'name':claim_name})
         self.assertTrue(self._compare_dict(expected_file_info, out))
-        self.assertTrue(self._compare_dict(expected_metadata, out['metadata']))
+        self.assertTrue(self._compare_dict(expected_metadata, out['metadata']['stream']['metadata']))
 
         # check file is under file_list
         out = lbrynets['lbrynet'].file_list()
@@ -341,17 +346,17 @@ class LbrynetTest(unittest.TestCase):
         out = lbrynets['lbrynet'].file_list({'name':claim_name})
         self.assertEqual(1, len(out))
         self.assertTrue(self._compare_dict(expected_file_info,out[0]))
-        self.assertTrue(self._compare_dict(expected_metadata, out[0]['metadata']))
+        self.assertTrue(self._compare_dict(expected_metadata, out[0]['metadata']['stream']['metadata']))
 
         out = lbrynets['lbrynet'].file_list({'sd_hash':sd_hash})
         self.assertEqual(1, len(out))
         self.assertTrue(self._compare_dict(expected_file_info,out[0]))
-        self.assertTrue(self._compare_dict(expected_metadata, out[0]['metadata']))
+        self.assertTrue(self._compare_dict(expected_metadata, out[0]['metadata']['stream']['metadata']))
 
         out = lbrynets['lbrynet'].file_list({'file_name':test_pub_file_name})
         self.assertEqual(1, len(out))
         self.assertTrue(self._compare_dict(expected_file_info,out[0]))
-        self.assertTrue(self._compare_dict(expected_metadata, out[0]['metadata']))
+        self.assertTrue(self._compare_dict(expected_metadata, out[0]['metadata']['stream']['metadata']))
 
         # check that we can get its blob
         out = lbrynets['lbrynet'].blob_list({'sd_hash':sd_hash})
@@ -460,6 +465,8 @@ class LbrynetTest(unittest.TestCase):
 
     @print_func
     def _test_abandon(self, claim_name='abandontest', claim_amount=1, key_fee=0):
+        #TODO: should check download and redownload from DHT here
+
         test_pub_file_name = claim_name+'.txt'
         test_pub_file_dir = '/src/lbry'
         test_pub_file = os.path.join(test_pub_file_dir,test_pub_file_name)
@@ -480,6 +487,12 @@ class LbrynetTest(unittest.TestCase):
         # check claimtrie state
         out = lbrynets['lbrynet'].claim_show({'name':claim_name})
         self.assertEqual(False, out)
+
+
+    @print_func
+    def _test_support(self, claim_name='supporttest', claim_amount=1, key_fee=0):
+        #TODO: write this 
+        pass
 
 
 if __name__ == '__main__':

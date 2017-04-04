@@ -5,7 +5,8 @@ MAINTAINER jobevers@lbry.io
 RUN apt-get update \
  && apt-get install -y  \
       libgmp3-dev build-essential \
-      git libssl-dev libffi-dev
+      git libssl-dev libffi-dev \
+      protobuf-compiler python-protobuf
 
 # doing the requirements first allows them to be cached
 ADD lbry/requirements.txt /src/lbry/requirements.txt
@@ -14,6 +15,12 @@ RUN virtualenv /app \
 
 ADD lbryum /src/lbryum
 RUN /app/bin/pip install -U /src/lbryum
+
+ADD lbryschema /src/lbryschema
+RUN /app/bin/pip install -r /src/lbryschema/requirements.txt
+#RUN /src/lbryschema/build.sh
+RUN /app/bin/pip install -U /src/lbryschema
+
 
 # build the app from source
 ADD lbry/ /src/lbry
