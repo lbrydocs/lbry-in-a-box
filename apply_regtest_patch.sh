@@ -7,4 +7,4 @@ LBRYUM_SERVER_ADDR_PREFIX=1ea2f3c56e7f8b8deebcc05292fef787289a3a61
 
 (cd lbrynet/lbryum; git fetch origin; git cherry-pick $LBRYUM_ADDR_PREFIX)
 (cd lighthouse/lbryum; git fetch origin; git cherry-pick $LBRYUM_ADDR_PREFIX)
-(cd lbryum-server/lbryum-server; git fetch origin; git cherry-pick $LBRYUM_SERVER_ADDR_PREFIX)
+(cd lbryum-server/lbryum-server; git fetch origin; git cherry-pick $LBRYUM_SERVER_ADDR_PREFIX --strategy-option theirs)
