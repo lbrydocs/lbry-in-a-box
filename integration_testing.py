@@ -65,6 +65,7 @@ class LbrynetTest(unittest.TestCase):
 
     def test_lbrynet(self):
         self._test_lbrynet_startup()
+        self._test_misc()
         self._test_recv_and_send()
         # test publish and download of free content
         self._test_publish('testname',1,)
@@ -178,6 +179,12 @@ class LbrynetTest(unittest.TestCase):
                 return
             time.sleep(3)
         self.fail('Lbrynet failed to start up')
+
+    @print_func
+    def _test_misc(self):
+        # test resolve_name for unresolveable name
+        out = lbrynets['lbrynet'].resolve_name({'name':'some_unclaimed_name'})
+        self.assertEqual(None, out)
 
     # receive balance from lbrycrd to lbrynet
     @print_func
@@ -490,9 +497,32 @@ class LbrynetTest(unittest.TestCase):
 
 
     @print_func
-    def _test_support(self, claim_name='supporttest', claim_amount=1, key_fee=0):
-        #TODO: write this 
-        pass
+    def _test_support(self, claim_name='supporttest', claim_amount=1, key_fee=0, support_amount=1):
+        #TODO: write this
+        test_pub_file_name = claim_name+'.txt'
+        test_pub_file_dir = '/src/lbry'
+        test_pub_file = os.path.join(test_pub_file_dir,test_pub_file_name)
+        expected_download_file = os.path.join('/data/Downloads/',test_pub_file_name)
+
+        # publish
+        publish_txid, publish_nout, claim_id, key_fee_address = self._publish(claim_name, claim_amount, key_fee, test_pub_file, 1024)
+
+        # support
+        out = lbrynets['lbrynet'].claim_new_support({'name':claim_name,'claim_id':claim_id,'amount':support_amount})
+        self.assertTrue('txid' in out)
+        self.assertTrue('nout' in out)
+        self.assertTrue('fee' in out)
+
+        self._wait_for_lbrynet_sync()
+        self._increment_blocks(6)
+
+        out=lbrynets['lbrynet'].claim_show({'name':claim_name})
+        print out
+        self.assertEqual(claim_name, out['name'])
+        self.assertEqual(publish_txid, out['txid'])
+        self.assertEqual(publish_nout, out['nout'])
+        self.assertEqual(claim_amount+support_amount, out['amount'])
+        self.assertEqual(1,len(out['supports']))
 
 
 if __name__ == '__main__':
