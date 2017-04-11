@@ -76,15 +76,4 @@ services:
     expose:
       - 8003
 
-  lighthouse:
-    build: ./lighthouse
-    expose:
-      # lighthouse needs the dht
-      - 3333
-      - 4444
-      - 5567
-    ports:
-      # where the search queries go
-      # this needs to be accessible on localhost
-      # because that is the network the UI knows about
-      - 50005:50005
+
