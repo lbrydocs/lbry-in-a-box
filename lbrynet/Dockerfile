@@ -13,14 +13,13 @@ ADD lbry/requirements.txt /src/lbry/requirements.txt
 RUN virtualenv /app \
  && /app/bin/pip install -r /src/lbry/requirements.txt
 
-ADD lbryum /src/lbryum
-RUN /app/bin/pip install -U /src/lbryum
-
 ADD lbryschema /src/lbryschema
 RUN /app/bin/pip install -r /src/lbryschema/requirements.txt
 #RUN /src/lbryschema/build.sh
 RUN /app/bin/pip install -U /src/lbryschema
 
+ADD lbryum /src/lbryum
+RUN /app/bin/pip install -U /src/lbryum
 
 # build the app from source
 ADD lbry/ /src/lbry
