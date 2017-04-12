@@ -67,7 +67,7 @@ class LbrynetTest(unittest.TestCase):
         self._test_lbrynet_startup()
         self._test_misc()
         self._test_recv_and_send()
-
+        #self._test_channels()
         # test publish and download of free content
         self._test_publish('testname',1,)
         # test publish and download of non free content
@@ -222,7 +222,13 @@ class LbrynetTest(unittest.TestCase):
         out = call_lbrycrd('getbalance', 'test')
         self.assertEqual(SEND_AMOUNT, out)
 
-    def _publish(self, claim_name, claim_amount, key_fee, test_pub_file, test_pub_file_size):
+    def _publish(self, claim_name, claim_amount, key_fee, channel_name=None, test_pub_file_size=1024):
+
+        test_pub_file_name = claim_name+'.txt'
+        test_pub_file_dir = '/src/lbry'
+        test_pub_file = os.path.join(test_pub_file_dir,test_pub_file_name)
+        expected_download_file = os.path.join('/data/Downloads/',test_pub_file_name)
+
         # make sure we have enough to claim the amount
         out = lbrynets['lbrynet'].get_balance()
         self.assertTrue(out >= claim_amount)
@@ -236,7 +242,9 @@ class LbrynetTest(unittest.TestCase):
 
         self._generate_test_file('lbrynet', test_pub_file_size, test_pub_file)
 
-        out = lbrynets['lbrynet'].publish({'name':claim_name,'file_path':test_pub_file,'bid':claim_amount,'metadata':test_metadata})
+        out = lbrynets['lbrynet'].publish({
+            'name':claim_name,'file_path':test_pub_file,'bid':claim_amount,
+            'metadata':test_metadata, 'channel_name':channel_name})
         self.assertTrue('txid' in out)
         self.assertTrue('nout' in out)
         self.assertTrue('claim_id' in out)
@@ -250,7 +258,9 @@ class LbrynetTest(unittest.TestCase):
 
         self._wait_for_lbrynet_sync()
         self._increment_blocks(6)
-        return publish_txid,publish_nout,claim_id,key_fee_address
+        out = {'publish_txid':publish_txid, 'publish_nout':publish_nout,'claim_id':claim_id,'key_fee_address':key_fee_address,
+            'expected_download_file':expected_download_file,'file_name':test_pub_file_name}
+        return out
 
     # makes sure all key,value present in expected_dict is present
     # and equivalent acutal_dict, return True if so
@@ -267,13 +277,12 @@ class LbrynetTest(unittest.TestCase):
     # test publishing from lbrynet, and test to see if we can download from dht
     @print_func
     def _test_publish(self, claim_name, claim_amount, key_fee = 0):
-        test_pub_file_size = 1024
-        test_pub_file_name = claim_name+'.txt'
-        test_pub_file_dir = '/src/lbry'
-        test_pub_file = os.path.join(test_pub_file_dir,test_pub_file_name)
-        expected_download_file = os.path.join('/data/Downloads/',test_pub_file_name)
-        publish_txid, publish_nout, claim_id, key_fee_address = self._publish(
-                            claim_name, claim_amount, key_fee, test_pub_file, test_pub_file_size)
+        publish_out = self._publish(claim_name, claim_amount, key_fee)
+        publish_txid = publish_out['publish_txid']
+        publish_nout = publish_out['publish_nout']
+        claim_id = publish_out['claim_id']
+        key_fee_address = publish_out['key_fee_address']
+        expected_download_file = publish_out['expected_download_file']
         publish_outpoint = publish_txid+':'+str(publish_nout)
 
         balance_before_key_fee = lbrynets['lbrynet'].get_balance()
@@ -336,12 +345,12 @@ class LbrynetTest(unittest.TestCase):
         expected_file_info={
             'download_directory': '/data/Downloads',
             'name': claim_name,
-            'download_path':expected_download_file,
-            'file_name': test_pub_file_name,
+            'download_path':publish_out['expected_download_file'],
+            'file_name': publish_out['file_name'],
             'sd_hash': sd_hash,
-            'suggested_file_name': test_pub_file_name,
+            'suggested_file_name': publish_out['file_name'],
             'outpoint': publish_outpoint,
-            'stream_name': test_pub_file_name,
+            'stream_name': publish_out['file_name'],
             'claim_id': claim_id,
         }
 
@@ -369,7 +378,7 @@ class LbrynetTest(unittest.TestCase):
         self.assertTrue(self._compare_dict(expected_file_info,out[0]))
         self.assertTrue(self._compare_dict(expected_metadata, out[0]['metadata']['stream']['metadata']))
 
-        out = lbrynets['lbrynet'].file_list({'file_name':test_pub_file_name})
+        out = lbrynets['lbrynet'].file_list({'file_name':publish_out['file_name']})
         self.assertEqual(1, len(out))
         self.assertTrue(self._compare_dict(expected_file_info,out[0]))
         self.assertTrue(self._compare_dict(expected_metadata, out[0]['metadata']['stream']['metadata']))
@@ -425,11 +434,11 @@ class LbrynetTest(unittest.TestCase):
         self.assertTrue(blob_hash in out)
 
         # check if dht has the file
-        self.assertTrue(self._check_has_file('dht',expected_download_file))
+        self.assertTrue(self._check_has_file('dht',publish_out['expected_download_file']))
 
         # check sha1sum of files are equivalent
-        dht_sha1sum = self._get_sha1sum_of_file('dht', expected_download_file)
-        lbrynet_sha1sum = self._get_sha1sum_of_file('lbrynet', expected_download_file)
+        dht_sha1sum = self._get_sha1sum_of_file('dht', publish_out['expected_download_file'])
+        lbrynet_sha1sum = self._get_sha1sum_of_file('lbrynet', publish_out['expected_download_file'])
         self.assertEqual(lbrynet_sha1sum, dht_sha1sum)
 
         # test to see if lbrynet received key fee
@@ -443,34 +452,26 @@ class LbrynetTest(unittest.TestCase):
 
         out = lbrynets['dht'].file_delete({'sd_hash':sd_hash})
         self.assertEqual(True,out)
-        self.assertFalse(self._check_has_file('dht',expected_download_file))
+        self.assertFalse(self._check_has_file('dht',publish_out['expected_download_file']))
         out = lbrynets['dht'].file_list()
         self.assertEqual(0, len(out))
 
     @print_func
     def _test_update(self, claim_name='updatetest', claim_amount=1, update_amount=2, key_fee=0 ):
-        test_pub_file_name = claim_name+'.txt'
-        test_pub_file_dir = '/src/lbry'
-        test_pub_file = os.path.join(test_pub_file_dir,test_pub_file_name)
-        expected_download_file = os.path.join('/data/Downloads/',test_pub_file_name)
 
         # publish
-        publish_txid, publish_nout, claim_id, key_fee_address = self._publish(claim_name, claim_amount, key_fee, test_pub_file, 1024)
+        publish_out = self._publish(claim_name, claim_amount, key_fee)
 
         #  download published file from dht
         out = lbrynets['dht'].get({'uri':claim_name})
 
-        test_pub_file_name = claim_name+'2.txt'
-        test_pub_file_dir = '/src/lbry'
-        test_pub_file = os.path.join(test_pub_file_dir,test_pub_file_name)
-        expected_download_file = os.path.join('/data/Downloads/',test_pub_file_name)
 
         # update
-        update_publish_txid, update_publish_nout, claim_id, key_fee_address = self._publish(claim_name, update_amount, key_fee, test_pub_file, 1024)
+        update_out = self._publish(claim_name, update_amount, key_fee)
 
         out = lbrynets['lbrynet'].resolve({'uri':claim_name})
-        self.assertEqual(out['claims']['txid'], update_publish_txid)
-        self.assertEqual(out['claims']['nout'], update_publish_nout)
+        self.assertEqual(out['claim']['txid'], update_out['publish_txid'])
+        self.assertEqual(out['claim']['nout'], update_out['publish_nout'])
         # check claimtrie state is updated
         """
         out = lbrynets['lbrynet'].claim_show({'name':claim_name})
@@ -487,13 +488,8 @@ class LbrynetTest(unittest.TestCase):
     def _test_abandon(self, claim_name='abandontest', claim_amount=1, key_fee=0):
         #TODO: should check download and redownload from DHT here
 
-        test_pub_file_name = claim_name+'.txt'
-        test_pub_file_dir = '/src/lbry'
-        test_pub_file = os.path.join(test_pub_file_dir,test_pub_file_name)
-        expected_download_file = os.path.join('/data/Downloads/',test_pub_file_name)
-
         # publish
-        publish_txid, publish_nout, claim_id, key_fee_address = self._publish(claim_name, claim_amount, key_fee, test_pub_file, 1024)
+        publish_out = self._publish(claim_name, claim_amount, key_fee)
 
         # abandon
         out = lbrynets['lbrynet'].claim_abandon({'claim_id':claim_id})
@@ -515,17 +511,11 @@ class LbrynetTest(unittest.TestCase):
 
     @print_func
     def _test_support(self, claim_name='supporttest', claim_amount=1, key_fee=0, support_amount=1):
-        #TODO: write this
-        test_pub_file_name = claim_name+'.txt'
-        test_pub_file_dir = '/src/lbry'
-        test_pub_file = os.path.join(test_pub_file_dir,test_pub_file_name)
-        expected_download_file = os.path.join('/data/Downloads/',test_pub_file_name)
-
         # publish
-        publish_txid, publish_nout, claim_id, key_fee_address = self._publish(claim_name, claim_amount, key_fee, test_pub_file, 1024)
+        publish_out = self._publish(claim_name, claim_amount, key_fee)
 
         # support
-        out = lbrynets['lbrynet'].claim_new_support({'name':claim_name,'claim_id':claim_id,'amount':support_amount})
+        out = lbrynets['lbrynet'].claim_new_support({'name':claim_name,'claim_id':publish_out['claim_id'],'amount':support_amount})
         self.assertTrue('txid' in out)
         self.assertTrue('nout' in out)
         self.assertTrue('fee' in out)
@@ -542,9 +532,44 @@ class LbrynetTest(unittest.TestCase):
 
 
     @print_func
-    def _test_channels(self, channel_name='testchannel', claim_name='channelclaim', claim_amount=1):
+    def _test_channels(self, channel_name='@testchannel', claim_name='channelclaim', claim_amount=1):
         pass
+        # claim channel
+        channel_out = lbrynets['lbrynet'].channel_new({'channel_name':channel_name,'amount':0.01})
+        print channel_out
+        self.assertTrue('tx' in channel_out)
+        self.assertTrue('txid' in channel_out)
+        self.assertTrue('nout' in channel_out)
+        self.assertTrue('claim_id' in channel_out)
 
+        out = lbrynets['lbrynet'].channel_list_mine()
+        print out
+
+        self._wait_for_lbrynet_sync()
+        self._increment_blocks(6)
+
+        out = lbrynets['lbrynet'].channel_list_mine()
+        print out
+
+        publish_out = self._publish(claim_name, claim_amount, key_fee=0, channel_name=channel_name)
+        # publish with channel name
+        print publish_out
+
+        out = lbrynets['lbrynet'].resolve({'uri':claim_name})
+        print out
+        self.assertEqual(out['claim']['txid'], publish_out['publish_txid'])
+        self.assertEqual(out['claim']['nout'], publish_out['publish_nout'])
+        self.assertEqual(out['claim']['nout'], publish_out['publish_nout'])
+        self.assertEqual(out['claim']['channel_name'], channel_name)
+        self.assertTrue(out['claim']['has_signature'])
+
+        out = lbrynets['lbrynet'].resolve({'uri':channel_name})
+        print out
+        self.assertEqual(out['certificate']['txid'],channel_out['txid'])
+        self.assertEqual(out['certificate']['nout'],channel_out['nout'])
+
+        #this doesn't work
+        #self.assertEqual(len(out['claims_in_channel']),1)
 
 if __name__ == '__main__':
 
