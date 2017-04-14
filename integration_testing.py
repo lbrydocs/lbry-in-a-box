@@ -32,7 +32,6 @@ lbrynets['reflector'] = JSONRPCProxy.from_url("http://localhost:{}/lbryapi".form
 
 test_metadata = {
     'license': 'NASA',
-    #'ver': '0.0.3',
     'description': 'test_description',
     'language': 'en',
     'author': 'test_author',
@@ -67,7 +66,6 @@ class LbrynetTest(unittest.TestCase):
         self._test_lbrynet_startup()
         self._test_misc()
         self._test_recv_and_send()
-        #self._test_channels()
         # test publish and download of free content
         self._test_publish('testname',1,)
         # test publish and download of non free content
@@ -75,6 +73,7 @@ class LbrynetTest(unittest.TestCase):
         self._test_update()
         self._test_support()
         self._test_abandon()
+        self._test_channels()
         # TODO: should try to remove all errors here, raise error if found
         print("Printing ERRORS found in log:")
         out,err = shell_command('grep ERROR {}'.format(DOCKER_LOG_FILE))
@@ -267,10 +266,10 @@ class LbrynetTest(unittest.TestCase):
     def _compare_dict(self, expected_dict, actual_dict):
         for key,val in expected_dict.iteritems():
             if key not in actual_dict:
-                print("{} not found".format(key))
+                #print("{} not found".format(key))
                 return False
             if expected_dict[key] != actual_dict[key]:
-                print("{} does not equal {} for key {}".format(expected_dict[key],actual_dict[key],key))
+                #print("{} does not equal {} for key {}".format(expected_dict[key],actual_dict[key],key))
                 return False
         return True
 
@@ -492,7 +491,7 @@ class LbrynetTest(unittest.TestCase):
         publish_out = self._publish(claim_name, claim_amount, key_fee)
 
         # abandon
-        out = lbrynets['lbrynet'].claim_abandon({'claim_id':claim_id})
+        out = lbrynets['lbrynet'].claim_abandon({'claim_id':publish_out['claim_id']})
         self.assertTrue('txid' in out)
         self.assertTrue('fee' in out)
         self.assertTrue('tx' in out)
@@ -506,7 +505,6 @@ class LbrynetTest(unittest.TestCase):
 
         out = lbrynets['lbrynet'].resolve({'uri':claim_name})
         self.assertEqual(None, out)
-
 
 
     @print_func
@@ -525,38 +523,30 @@ class LbrynetTest(unittest.TestCase):
 
         out=lbrynets['lbrynet'].claim_show({'name':claim_name})
         self.assertEqual(claim_name, out['name'])
-        self.assertEqual(publish_txid, out['txid'])
-        self.assertEqual(publish_nout, out['nout'])
+        self.assertEqual(publish_out['publish_txid'], out['txid'])
+        self.assertEqual(publish_out['publish_nout'], out['nout'])
         self.assertEqual(claim_amount+support_amount, out['effective_amount'])
         self.assertEqual(1,len(out['supports']))
 
 
     @print_func
     def _test_channels(self, channel_name='@testchannel', claim_name='channelclaim', claim_amount=1):
-        pass
         # claim channel
         channel_out = lbrynets['lbrynet'].channel_new({'channel_name':channel_name,'amount':0.01})
-        print channel_out
         self.assertTrue('tx' in channel_out)
         self.assertTrue('txid' in channel_out)
         self.assertTrue('nout' in channel_out)
         self.assertTrue('claim_id' in channel_out)
 
-        out = lbrynets['lbrynet'].channel_list_mine()
-        print out
-
         self._wait_for_lbrynet_sync()
         self._increment_blocks(6)
 
         out = lbrynets['lbrynet'].channel_list_mine()
-        print out
+        self.assertEqual(1, len(out))
 
         publish_out = self._publish(claim_name, claim_amount, key_fee=0, channel_name=channel_name)
-        # publish with channel name
-        print publish_out
 
         out = lbrynets['lbrynet'].resolve({'uri':claim_name})
-        print out
         self.assertEqual(out['claim']['txid'], publish_out['publish_txid'])
         self.assertEqual(out['claim']['nout'], publish_out['publish_nout'])
         self.assertEqual(out['claim']['nout'], publish_out['publish_nout'])
@@ -564,12 +554,13 @@ class LbrynetTest(unittest.TestCase):
         self.assertTrue(out['claim']['has_signature'])
 
         out = lbrynets['lbrynet'].resolve({'uri':channel_name})
-        print out
         self.assertEqual(out['certificate']['txid'],channel_out['txid'])
         self.assertEqual(out['certificate']['nout'],channel_out['nout'])
 
-        #this doesn't work
-        #self.assertEqual(len(out['claims_in_channel']),1)
+        self.assertEqual(len(out['claims_in_channel']),1)
+        self.assertEqual(out['claims_in_channel'][0]['name'],claim_name)
+        self.assertEqual(out['claims_in_channel'][0]['txid'],publish_out['publish_txid'])
+        self.assertEqual(out['claims_in_channel'][0]['nout'],publish_out['publish_nout'])
 
 if __name__ == '__main__':
 

@@ -8,7 +8,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get -q update \
  && DEBIAN_FRONTEND=noninteractive apt-get -qqy install \
         unzip libleveldb1 libleveldb-dev \
  && rm -rf /var/lib/apt/lists/* \
- && pip install -qr /tmp/requirements.txt 
+ && pip install -qr /tmp/requirements.txt
 
 ADD lbryum-server /code/lbryum-server
 # this symlink is required so that lbryum-server can run in editable mode.
@@ -22,6 +22,17 @@ RUN ln -s /code/lbryum-server/src/ /code/lbryum-server/lbryumserver \
 ADD lbrycrdd /usr/local/bin/lbrycrdd
 ADD lbrycrd.conf /data/lbrycrd/lbrycrd.conf
 ADD lbryum.conf /etc/lbryum.conf
+
+# install lbryschema
+# install the requirements
+RUN apt-get update \
+ && apt-get install -y  \
+      python-protobuf
+
+ADD lbryschema /src/lbryschema
+RUN pip install -r /src/lbryschema/requirements.txt
+RUN pip install -U /src/lbryschema
+
 
 VOLUME /data
 # the port that lbryum clients connect to.
