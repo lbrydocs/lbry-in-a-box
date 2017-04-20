@@ -71,6 +71,16 @@ services:
       - 3333
       - 4444
 
+  lbryum:
+    build: ./lbrynet
+    depends_on:
+      - lbryum-server
+    ports:
+      - 7777:7777
+    command: ["/app/bin/run.sh", "lbryum-only"]
+
+
+
   fake-bittrex:
     build: ./fake-bittrex
     expose:

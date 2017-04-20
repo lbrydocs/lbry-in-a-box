@@ -1,5 +1,8 @@
 #!/bin/bash
-# This is a hack to ensure that lbrynet always starts up after lbryum-server is finished syncing
-sleep 20
-/app/bin/python /app/bin/lbrynet-daemon --verbose
-
+if [ "$1" == "lbryum-only" ]; then
+    /app/bin/lbryum daemon start -D /data/lbryum
+    tail -f /dev/null
+else
+    sleep 15 
+    /app/bin/python /app/bin/lbrynet-daemon --verbose
+fi

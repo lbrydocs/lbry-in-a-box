@@ -29,6 +29,7 @@ RUN mkdir -p /data /data/lbryum /data/lbrynet /data/Downloads \
 
 VOLUME /data
 ADD data /data
+
 # this is temporary; eventually all
 # lbrynet data should go in /data/lbrynet
 VOLUME /home/lbry/.lbrynet
