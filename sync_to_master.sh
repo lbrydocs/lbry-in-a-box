@@ -13,8 +13,13 @@ fi
 
 (cd lbrynet/lbry; git fetch origin; git checkout $lbry_tag)
 (cd lighthouse/lbry; git fetch origin; git checkout $lbry_tag)
+
 (cd lbrynet/lbryum; git fetch origin; git checkout $lbryum_tag)
 (cd lighthouse/lbryum; git fetch origin; git checkout $lbryum_tag)
+
 (cd lbryum-server/lbryum-server; git fetch origin; git checkout origin/master)
+
 (cd lbrynet/lbryschema; git fetch origin; git checkout origin/master)
+(cd lbryum-server/lbryschema; git fetch origin; git checkout origin/master)
+
 (cd lighthouse/lighthouse; git fetch origin; git checkout origin/master)
