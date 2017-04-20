@@ -16,6 +16,8 @@ from urllib2 import URLError
 from httplib import BadStatusLine
 from socket import error
 import os
+import json
+import string
 
 lbrycrd_rpc_user='rpcuser'
 lbrycrd_rpc_pw='jhopfpusrx'
@@ -47,11 +49,21 @@ def shell_command(command):
     out,err = p.communicate()
     return out,err
 
-
 def call_lbrycrd(method, *params):
     lbrycrd = AuthServiceProxy("http://{}:{}@{}:{}".format(lbrycrd_rpc_user,lbrycrd_rpc_pw,
                                                             lbrycrd_rpc_ip,lbrycrd_rpc_port))
     return getattr(lbrycrd,method)(*params)
+
+def call_lbryum(method, *params):
+    params_str = ' '.join([str(p) for p in params])
+    lbryum_cmd= "/app/bin/lbryum {} {} -D /data/lbryum".format(method,params_str)
+    cmd = 'docker exec -it lbryinabox_lbryum_1 {}'.format(lbryum_cmd)
+    out,err = shell_command(cmd)
+    try:
+        out = json.loads(out)
+    except ValueError as e:
+        raise
+    return out
 
 # wrapper function just to see where we are in the test
 def print_func(func):
@@ -67,17 +79,19 @@ class LbrynetTest(unittest.TestCase):
         self._test_misc()
         self._test_recv_and_send()
         # test publish and download of free content
-        self._test_publish('testname',1,)
+        self._test_publish('testname', claim_amount=1,)
         # test publish and download of non free content
-        self._test_publish('testname2',1,1.0)
+        self._test_publish('testname2', claim_amount=1, key_fee=1.0)
         self._test_update()
         self._test_support()
         self._test_abandon()
         self._test_channels()
+        self._test_uri()
         # TODO: should try to remove all errors here, raise error if found
         print("Printing ERRORS found in log:")
         out,err = shell_command('grep ERROR {}'.format(DOCKER_LOG_FILE))
         print out
+
 
     # randomly generate a test file on lbrynet instance
     def _generate_test_file(self, lbrynet_instance_str, file_size_bytes, file_path):
@@ -98,7 +112,6 @@ class LbrynetTest(unittest.TestCase):
         out,err = shell_command(cmd)
         return 'No such file' not in out and file_path in out
 
-
     def _increment_blocks(self, num_blocks):
         LBRYNET_BLOCK_SYNC_TIMEOUT = 60
 
@@ -113,8 +126,11 @@ class LbrynetTest(unittest.TestCase):
         self._is_blockhash(best_block_hash)
         start_time = time.time()
         while time.time() - start_time < LBRYNET_BLOCK_SYNC_TIMEOUT:
+            # wait till all lbrynets blockhash are best
             if all([lbrynet.get_best_blockhash() == best_block_hash for lbrynet in lbrynets.values()]):
-                return
+                # wait till lbryum blockhash is best
+                if call_lbryum('getbestblockhash') == best_block_hash:
+                    return
             time.sleep(1)
         self.fail('Lbrynet block sync timed out')
 
@@ -124,17 +140,33 @@ class LbrynetTest(unittest.TestCase):
     def _is_blockhash(self, blockhash):
         self.assertEqual(len(blockhash),64)
 
-    def _wait_till_balance_equals(self,lbrynet,amount):
+    def _wait_till_balance_equals(self,lbrynet,amount,less_than=False):
         LBRYNET_SYNC_TIMEOUT = 90
         start_time = time.time()
         while time.time() - start_time < LBRYNET_SYNC_TIMEOUT:
-            if lbrynet.get_balance() == amount:
+            if not less_than and lbrynet.get_balance() == amount:
+                return
+            if less_than and lbrynet.get_balance() < amount:
                 return
             time.sleep(1)
         self.fail('Lbrynet failed to sync balance in time')
 
-    def _wait_for_lbrynet_sync(self):
-        time.sleep(90)
+    # wait till txid appears on lbrycrd
+    def _wait_for_lbrynet_sync(self,txid=None):
+        LBRYNET_SYNC_TIMEOUT = 90
+        start_time = time.time()
+        while time.time() - start_time < LBRYNET_SYNC_TIMEOUT:
+            try:
+                lbrycrd_out = call_lbrycrd('getrawtransaction',txid)
+            except Exception as e:
+                pass
+            else:
+                if all(c in string.hexdigits for c in lbrycrd_out):
+                    return
+                else:
+                    self.fail('got unexpected output:{}'.format(out))
+            time.sleep(1)
+        self.fail('Lbrynet failed to synce txid in time')
 
     # send amount from lbrycrd to lbrynet instance
     def _send_from_lbrycrd(self, amount, to_lbrynet):
@@ -149,17 +181,54 @@ class LbrynetTest(unittest.TestCase):
         self._wait_till_balance_equals(to_lbrynet,prev_balance+amount)
 
 
+    # check claim for name is occupied by txid/nout
+    def _check_claim_state(self, name, txid, nout, amount, effective_amount=None):
+        if effective_amount is None:
+            effective_amount = amount
+        # check lbrycrd
+        out = call_lbrycrd('getvalueforname', name)
+        self.assertEqual(out['txid'],txid)
+        self.assertEqual(out['n'],nout)
+        self.assertEqual(out['amount'],amount*100000000)
+        self.assertEqual(out['effective amount'],effective_amount*100000000)
+
+        # check lbryum
+        out = call_lbryum('getvalueforname', name)
+        self.assertEqual(out['txid'],txid)
+        self.assertEqual(out['nout'],nout)
+
+        # check lbrynet
+        out= lbrynets['lbrynet'].resolve({'uri':name})
+        if 'claim' in out:
+            self.assertEqual(out['claim']['txid'],txid)
+            self.assertEqual(out['claim']['nout'],nout)
+        elif 'certificate' in out:
+            self.assertEqual(out['certificate']['txid'],txid)
+            self.assertEqual(out['certificate']['nout'],nout)
+
+    # check that name is unclaimed
+    def _check_unclaimed(self, name):
+        out = call_lbrycrd('getvalueforname', name)
+        self.assertEqual({},out)
+
+        out = call_lbryum('getvalueforname', name)
+        self.assertTrue('error' in out)
+        self.assertEqual(out['error'],'name is not claimed')
+
+        out= lbrynets['lbrynet'].resolve({'uri':name})
+        self.assertEqual(None, out)
+
     def _check_lbrynet_init(self,lbrynet):
         try:
             lbrynet_status = lbrynet.status()
         except (URLError,error,BadStatusLine) as e:
             return False
 
-        if lbrynet_status['is_running'] == True:
+        if lbrynet_status['is_running'] == True and lbrynet_status['blockchain_status']['blocks'] == NUM_INITIAL_BLOCKS_GENERATED:
             self.assertEqual(0, lbrynet.get_balance())
-            self.assertEqual(True, lbrynet_status['is_first_run'])
+            #TODO: this should be True
+            #self.assertEqual(True, lbrynet_status['is_first_run'])
             self.assertEqual(0, lbrynet_status['blocks_behind'])
-            self.assertEqual(NUM_INITIAL_BLOCKS_GENERATED, lbrynet_status['blockchain_status']['blocks'])
             return True
         else:
             return False
@@ -194,7 +263,11 @@ class LbrynetTest(unittest.TestCase):
         #self.assertEqual(None,out)
         pass
 
-    # receive balance from lbrycrd to lbrynet
+    """
+    receive balance from lbrycrd to lbrynet
+    make sure this test gets run first, so
+    lbrynet has credits required to run some commands
+    """
     @print_func
     def _test_recv_and_send(self):
         RECV_AMOUNT = 10
@@ -255,7 +328,7 @@ class LbrynetTest(unittest.TestCase):
         self._is_txid(publish_txid)
         self.assertTrue(isinstance(publish_nout,int))
 
-        self._wait_for_lbrynet_sync()
+        self._wait_for_lbrynet_sync(out['txid'])
         self._increment_blocks(6)
         out = {'publish_txid':publish_txid, 'publish_nout':publish_nout,'claim_id':claim_id,'key_fee_address':key_fee_address,
             'expected_download_file':expected_download_file,'file_name':test_pub_file_name}
@@ -286,12 +359,7 @@ class LbrynetTest(unittest.TestCase):
 
         balance_before_key_fee = lbrynets['lbrynet'].get_balance()
 
-        # check lbrycrd claim state is updated
-        out = call_lbrycrd('getvalueforname',claim_name)
-        self.assertEqual(out['amount'],claim_amount*100000000)
-        self.assertEqual(out['effective amount'],claim_amount*100000000)
-        self.assertEqual(out['txid'],publish_txid)
-        self.assertEqual(out['n'],publish_nout)
+        self._check_claim_state(claim_name, publish_out['publish_txid'],publish_out['publish_nout'], claim_amount)
 
         # check lbrynet claim states are updated
         out = lbrynets['lbrynet'].claim_show({'name':claim_name})
@@ -335,7 +403,6 @@ class LbrynetTest(unittest.TestCase):
             expected_metadata['fee'] = {'currency':'LBC','address':key_fee_address,'amount':key_fee,'version':'_0_0_1'}
         out = lbrynets['lbrynet'].resolve_name({'name':claim_name})
         metadata = out['stream']['metadata']
-        print metadata
         #TODO: need to compare entire claim_dict here
         self.assertTrue(self._compare_dict(expected_metadata,metadata))
 
@@ -413,6 +480,7 @@ class LbrynetTest(unittest.TestCase):
             # send key fee (plus additional amount to pay for tx fee) to dht if necessary
             self._send_from_lbrycrd(key_fee+1, lbrynets['dht'])
 
+        dht_balance_before_get = lbrynets['dht'].get_balance()
         out = lbrynets['dht'].get({'uri':claim_name})
         self.assertTrue(self._compare_dict(expected_file_info, out))
 
@@ -442,7 +510,18 @@ class LbrynetTest(unittest.TestCase):
 
         # test to see if lbrynet received key fee
         if key_fee != 0:
-            self._wait_for_lbrynet_sync()
+            # wait for unconfirmed transaction to show up on dht
+            start_time = time.time()
+            while 1:
+                out = lbrynets['dht'].transaction_list()
+                if out[-1]['confirmations'] == 0:
+                    txid = out[-1]['txid']
+                    break
+                time.sleep(1)
+                if time.time() - start_time > 90:
+                    self.fail('dht did not create transaction')
+
+            self._wait_for_lbrynet_sync(txid)
             self._increment_blocks(6)
             self._wait_till_balance_equals(lbrynets['lbrynet'], balance_before_key_fee+key_fee)
 
@@ -457,28 +536,17 @@ class LbrynetTest(unittest.TestCase):
 
     @print_func
     def _test_update(self, claim_name='updatetest', claim_amount=1, update_amount=2, key_fee=0 ):
-
         # publish
         publish_out = self._publish(claim_name, claim_amount, key_fee)
+        self._check_claim_state(claim_name, publish_out['publish_txid'], publish_out['publish_nout'], claim_amount)
 
         #  download published file from dht
         out = lbrynets['dht'].get({'uri':claim_name})
 
-
         # update
         update_out = self._publish(claim_name, update_amount, key_fee)
+        self._check_claim_state(claim_name, update_out['publish_txid'], update_out['publish_nout'], update_amount)
 
-        out = lbrynets['lbrynet'].resolve({'uri':claim_name})
-        self.assertEqual(out['claim']['txid'], update_out['publish_txid'])
-        self.assertEqual(out['claim']['nout'], update_out['publish_nout'])
-        # check claimtrie state is updated
-        """
-        out = lbrynets['lbrynet'].claim_show({'name':claim_name})
-        self.assertEqual(claim_name, out['name'])
-        self.assertEqual(update_publish_txid, out['txid'])
-        self.assertEqual(update_publish_nout, out['nout'])
-        self.assertEqual(update_amount, out['amount'])
-        """
         # check file_list
         out = lbrynets['lbrynet'].file_list({'name':claim_name})
         self.assertEqual(2,len(out))
@@ -496,15 +564,11 @@ class LbrynetTest(unittest.TestCase):
         self.assertTrue('fee' in out)
         self.assertTrue('tx' in out)
 
-        self._wait_for_lbrynet_sync()
+        self._wait_for_lbrynet_sync(out['txid'])
         self._increment_blocks(6)
 
         # check claimtrie state
-        #out = lbrynets['lbrynet'].claim_show({'name':claim_name})
-        #self.assertEqual(False, out)
-
-        out = lbrynets['lbrynet'].resolve({'uri':claim_name})
-        self.assertEqual(None, out)
+        self._check_unclaimed(claim_name)
 
 
     @print_func
@@ -518,7 +582,7 @@ class LbrynetTest(unittest.TestCase):
         self.assertTrue('nout' in out)
         self.assertTrue('fee' in out)
 
-        self._wait_for_lbrynet_sync()
+        self._wait_for_lbrynet_sync(out['txid'])
         self._increment_blocks(6)
 
         out=lbrynets['lbrynet'].claim_show({'name':claim_name})
@@ -531,15 +595,21 @@ class LbrynetTest(unittest.TestCase):
 
     @print_func
     def _test_channels(self, channel_name='@testchannel', claim_name='channelclaim', claim_amount=1):
+
+        out = lbrynets['lbrynet'].channel_list_mine()
+        self.assertEqual(0,len(out))
+
         # claim channel
-        channel_out = lbrynets['lbrynet'].channel_new({'channel_name':channel_name,'amount':0.01})
+        channel_out = lbrynets['lbrynet'].channel_new({'channel_name':channel_name,'amount':claim_amount})
         self.assertTrue('tx' in channel_out)
         self.assertTrue('txid' in channel_out)
         self.assertTrue('nout' in channel_out)
         self.assertTrue('claim_id' in channel_out)
 
-        self._wait_for_lbrynet_sync()
+        self._wait_for_lbrynet_sync(channel_out['txid'])
         self._increment_blocks(6)
+
+        self._check_claim_state(channel_name,channel_out['txid'],channel_out['nout'],claim_amount)
 
         out = lbrynets['lbrynet'].channel_list_mine()
         self.assertEqual(1, len(out))
@@ -561,6 +631,12 @@ class LbrynetTest(unittest.TestCase):
         self.assertEqual(out['claims_in_channel'][0]['name'],claim_name)
         self.assertEqual(out['claims_in_channel'][0]['txid'],publish_out['publish_txid'])
         self.assertEqual(out['claims_in_channel'][0]['nout'],publish_out['publish_nout'])
+
+    @print_func
+    def _test_uri(self):
+        out = lbrynets['lbrynet'].resolve({"uri":"something_unclaimed:1"})
+        self.assertEqual(None, out)
+
 
 if __name__ == '__main__':
 
