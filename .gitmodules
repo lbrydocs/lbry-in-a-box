@@ -19,3 +19,6 @@
 [submodule "lbryum-server/lbryschema"]
 	path = lbryum-server/lbryschema
 	url = https://github.com/lbryio/lbryschema
+[submodule "lbryum-server/lbryum-server"]
+	path = lbryum-server/lbryum-server
+	url = https://github.com/lbryio/lbryum-server
