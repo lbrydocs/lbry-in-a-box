@@ -5,4 +5,3 @@
 LBRYUM_ADDR_PREFIX=adad3604943da278b693ae71a5f317165b1c99b8
 
 (cd lbrynet/lbryum; git fetch origin; git cherry-pick $LBRYUM_ADDR_PREFIX)
-(cd lighthouse/lbryum; git fetch origin; git cherry-pick $LBRYUM_ADDR_PREFIX)

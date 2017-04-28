@@ -26,6 +26,7 @@ RUN /app/bin/pip install /src/lbry
 
 RUN mkdir -p /data /data/lbryum /data/lbrynet /data/Downloads \
  && mkdir -p /home/lbry/.lbrynet
+ADD lbryum_rpc_client.py /src/lbryum_rpc_client.py
 
 VOLUME /data
 ADD data /data
