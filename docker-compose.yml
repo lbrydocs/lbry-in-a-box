@@ -19,6 +19,8 @@ services:
       # stratum port
       # (this is what lbryum client connects to)
       - 50001:50001
+      # lbrycrdd rpc port
+      - 19011:19011
     depends_on:
       - lbrycrd
 
