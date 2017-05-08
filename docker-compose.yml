@@ -13,6 +13,9 @@ services:
 
   lbryum-server:
     build: ./lbryum-server
+    expose:
+        #lbrycrd port
+        - 19000
     ports:
       # lbryum rpc port
       - 8000:8000

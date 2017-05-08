@@ -97,9 +97,11 @@ Next, run 'bash apply_regetest_patch.sh' which will patch lbryum and
 lbryum-server to run on regtest network.
 
 Finally, run 'python integration_testing.py' which will launch all the
-docker containers and run integration testing. Testing takes abou 10 minutes
+docker containers and run integration testing. Testing takes about 10 minutes
 currently. 
 
+Running 'python lbryum_testing.py' will run lbryum and lbryum server specific
+testing.
 
 
 

@@ -19,18 +19,7 @@ import os
 import json
 import string
 
-lbrycrd_rpc_user='rpcuser'
-lbrycrd_rpc_pw='jhopfpusrx'
-lbrycrd_rpc_ip='127.0.0.1'
-lbrycrd_rpc_port='19001'
-lbrynet_rpc_port = '5279'
-dht_rpc_port = '5278'
-reflector_rpc_port = '5277'
-
-lbrynets={}
-lbrynets['lbrynet'] = JSONRPCProxy.from_url("http://localhost:{}/lbryapi".format(lbrynet_rpc_port))
-lbrynets['dht'] = JSONRPCProxy.from_url("http://localhost:{}/lbryapi".format(dht_rpc_port))
-lbrynets['reflector'] = JSONRPCProxy.from_url("http://localhost:{}/lbryapi".format(reflector_rpc_port))
+from test_utils import *
 
 test_metadata = {
     'license': 'NASA',
@@ -41,37 +30,14 @@ test_metadata = {
     'nsfw': False,
 }
 
-DOCKER_LOG_FILE='tmp.log'
-NUM_INITIAL_BLOCKS_GENERATED = 150
-
-def shell_command(command):
-    p = subprocess.Popen(command,shell=True,stdout=subprocess.PIPE)
-    out,err = p.communicate()
-    return out,err
-
-def call_lbrycrd(method, *params):
-    lbrycrd = AuthServiceProxy("http://{}:{}@{}:{}".format(lbrycrd_rpc_user,lbrycrd_rpc_pw,
-                                                            lbrycrd_rpc_ip,lbrycrd_rpc_port))
-    return getattr(lbrycrd,method)(*params)
-
-def call_lbryum(method, *params):
-    params_str = ' '.join([json.dumps(p) for p in params])
-    lbryum_cmd = "/src/lbryum_rpc_client.py {} {}".format(method,params_str)
-    cmd = 'docker exec -it lbryinabox_lbryum_1 /app/bin/python {}'.format(lbryum_cmd)
-    out,err = shell_command(cmd)
-    try:
-        out = json.loads(out)
-    except ValueError as e:
-        print out
-        raise
-    return out
-
 # wrapper function just to see where we are in the test
 def print_func(func):
     def wrapper(*args,**kwargs):
         print("Running:{}".format(func.func_name))
         return func(*args,**kwargs)
     return wrapper
+
+
 
 class LbrynetTest(unittest.TestCase):
 
@@ -91,10 +57,6 @@ class LbrynetTest(unittest.TestCase):
         print("Printing ERRORS found in log:")
         out,err = shell_command('grep ERROR {}'.format(DOCKER_LOG_FILE))
         print out
-
-    @unittest.skip("skipping lbryum specific tests")
-    def test_lbryum(self):
-        self._test_lbryum_invalid_update()
 
 
     # randomly generate a test file on lbrynet instance
@@ -210,6 +172,7 @@ class LbrynetTest(unittest.TestCase):
             self.assertEqual(out['certificate']['txid'],txid)
             self.assertEqual(out['certificate']['nout'],nout)
 
+
     # check that name is unclaimed
     def _check_unclaimed(self, name):
         out = call_lbrycrd('getvalueforname', name)
@@ -240,16 +203,7 @@ class LbrynetTest(unittest.TestCase):
     @print_func
     def _test_lbrynet_startup(self):
         LBRYNET_STARTUP_TIMEOUT = 180
-
-        # Make sure to rebuild docker instances
-        out,err=shell_command('docker-compose down')
-        out,err=shell_command('docker-compose rm -f')
-        out,err=shell_command('docker-compose build')
-        print out
-        if err != None:
-            self.fail("Failed to build")
-        out,err=shell_command('docker-compose up > {}&'.format(DOCKER_LOG_FILE))
-
+        docker_compose_build()
         start_time = time.time()
         while time.time() - start_time < LBRYNET_STARTUP_TIMEOUT:
             if all([self._check_lbrynet_init(lbrynet) for lbrynet in lbrynets.values()]):
@@ -403,7 +357,6 @@ class LbrynetTest(unittest.TestCase):
             'description':test_metadata['description']
         }
         if key_fee != 0:
-            #expected_metadata['fee'] = {'LBC': {"address": key_fee_address, "amount": key_fee}}
             expected_metadata['fee'] = {'currency':'LBC','address':key_fee_address,'amount':key_fee,'version':'_0_0_1'}
         out = lbrynets['lbrynet'].resolve_name({'name':claim_name})
         metadata = out['stream']['metadata']
@@ -601,13 +554,14 @@ class LbrynetTest(unittest.TestCase):
 
 
     @print_func
-    def _test_channels(self, channel_name='@testchannel', claim_name='channelclaim', claim_amount=1):
+    def _test_channels(self, channel_name='@testchannel', channel_claim_amount= 0.5,
+                        claim_name='channelclaim', claim_amount=1):
 
         out = lbrynets['lbrynet'].channel_list_mine()
         self.assertEqual(0,len(out))
 
         # claim channel
-        channel_out = lbrynets['lbrynet'].channel_new({'channel_name':channel_name,'amount':claim_amount})
+        channel_out = lbrynets['lbrynet'].channel_new({'channel_name':channel_name,'amount':channel_claim_amount})
         self.assertTrue('tx' in channel_out)
         self.assertTrue('txid' in channel_out)
         self.assertTrue('nout' in channel_out)
@@ -616,7 +570,7 @@ class LbrynetTest(unittest.TestCase):
         self._wait_for_lbrynet_sync(channel_out['txid'])
         self._increment_blocks(6)
 
-        self._check_claim_state(channel_name,channel_out['txid'],channel_out['nout'],claim_amount)
+        self._check_claim_state(channel_name,channel_out['txid'],channel_out['nout'],channel_claim_amount)
 
         out = lbrynets['lbrynet'].channel_list_mine()
         self.assertEqual(1, len(out))
@@ -624,67 +578,31 @@ class LbrynetTest(unittest.TestCase):
         publish_out = self._publish(claim_name, claim_amount, key_fee=0, channel_name=channel_name)
 
         out = lbrynets['lbrynet'].resolve({'uri':claim_name})
-        self.assertEqual(out['claim']['txid'], publish_out['publish_txid'])
-        self.assertEqual(out['claim']['nout'], publish_out['publish_nout'])
-        self.assertEqual(out['claim']['nout'], publish_out['publish_nout'])
-        self.assertEqual(out['claim']['channel_name'], channel_name)
-        self.assertTrue(out['claim']['has_signature'])
+
+        def check_channel_resolve(out):
+            self.assertEqual(out['certificate']['txid'],channel_out['txid'])
+            self.assertEqual(out['certificate']['nout'],channel_out['nout'])
+            self.assertEqual(out['certificate']['amount'],channel_claim_amount)
+            self.assertEqual(len(out['claims_in_channel']),1)
+            self.assertEqual(out['claims_in_channel'][0]['name'],claim_name)
+            self.assertEqual(out['claims_in_channel'][0]['amount'],claim_amount)
+            self.assertEqual(out['claims_in_channel'][0]['txid'],publish_out['publish_txid'])
+            self.assertEqual(out['claims_in_channel'][0]['nout'],publish_out['publish_nout'])
 
         out = lbrynets['lbrynet'].resolve({'uri':channel_name})
-        self.assertEqual(out['certificate']['txid'],channel_out['txid'])
-        self.assertEqual(out['certificate']['nout'],channel_out['nout'])
+        check_channel_resolve(out)
 
-        self.assertEqual(len(out['claims_in_channel']),1)
-        self.assertEqual(out['claims_in_channel'][0]['name'],claim_name)
-        self.assertEqual(out['claims_in_channel'][0]['txid'],publish_out['publish_txid'])
-        self.assertEqual(out['claims_in_channel'][0]['nout'],publish_out['publish_nout'])
+        out = lbrynets['lbrynet'].resolve({'uri':channel_name+':1'})
+        check_channel_resolve(out)
+
+
 
     @print_func
     def _test_uri(self):
         out = lbrynets['lbrynet'].resolve({"uri":"something_unclaimed:1"})
         self.assertEqual(None, out)
 
-    @print_func
-    def _test_lbryum_invalid_update(self):
-        # this test makes sure that invalid updates do not make it in the claim trie
 
-        address = call_lbryum('getunusedaddress')
-
-        out = call_lbrycrd('sendtoaddress',address,1)
-        self._is_txid(out)
-        self._increment_blocks(6)
-
-        claim_out = call_lbryum('claim','invalidupdate','test',0.01,None,True,None,None,None,True,True,
-            True)
-        self._wait_for_lbrynet_sync(claim_out['txid'])
-        self._increment_blocks(6)
-
-        claim_out_2 = call_lbryum('claim','unrelatedupdate','test',0.01,None,True,None,None,None,True,True,
-            True)
-        self._wait_for_lbrynet_sync(claim_out_2['txid'])
-        self._increment_blocks(6)
-
-        # this update is invalid
-        update_out = call_lbryum('update','invalidupdate','test2',0.1, None, claim_out['claim_id'], claim_out_2['txid'], claim_out_2['nout'],True,None,
-            None, None, True, True)
-        self._wait_for_lbrynet_sync(update_out['txid'])
-        self._increment_blocks(6)
-
-        self._check_claim_state('invalidupdate',claim_out['txid'],claim_out['nout'],0.01)
-
-        out=call_lbryum('getclaimbyid',claim_out['claim_id'])
-        self.assertEqual(out['txid'],claim_out['txid'])
-        self.assertEqual(out['nout'],claim_out['nout'])
-
-        # this update is valid
-        update_out = call_lbryum('update','invalidupdate','test2',0.1, None, claim_out['claim_id'], claim_out['txid'], claim_out['nout'],True,None,
-            None, None, True, True)
-        self._wait_for_lbrynet_sync(update_out['txid'])
-        self._increment_blocks(6)
-
-        out=call_lbryum('getclaimbyid',claim_out['claim_id'])
-        self.assertEqual(out['txid'],update_out['txid'])
-        self.assertEqual(out['nout'],update_out['nout'])
 
 
 if __name__ == '__main__':
