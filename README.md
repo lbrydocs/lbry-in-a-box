@@ -93,9 +93,6 @@ to sync repositories to their respective masters on github. You can also
 specify which branch to sync lbrynet and lbryum to if you want to test
 a non master branch.
 
-Next, run 'bash apply_regetest_patch.sh' which will patch lbryum and
-lbryum-server to run on regtest network.
-
 Finally, run 'python integration_testing.py' which will launch all the
 docker containers and run integration testing. Testing takes about 10 minutes
 currently. 

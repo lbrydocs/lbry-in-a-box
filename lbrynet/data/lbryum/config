@@ -2,6 +2,6 @@
  "default_servers": {
    "lbryum-server": {"t": "50001"}
  },
- "chain": "lbrycrdreg",
+ "chain": "lbrycrd_regtest",
  "rpcport":7777
 }
