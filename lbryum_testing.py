@@ -5,22 +5,6 @@ import time
 
 from lbryschema.claim import ClaimDict
 
-# wait till txid appears on lbrycrd
-def wait_for_lbrynet_sync(instance, txid=None,timeout=90):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        try:
-            lbrycrd_out = lbrycrds[instance].getrawtransaction(txid)
-        except Exception as e:
-            pass
-        else:
-            if all(c in string.hexdigits for c in lbrycrd_out):
-                return True
-            else:
-                raise Exception('got unexpected output:{}'.format(out))
-        time.sleep(1)
-    return False
-
 # increment num_blocks block on lbrycrd and wait for lbrynets
 # and lbryum to be in sync, return True if sycned within timeout,
 # False otherwise
@@ -51,7 +35,7 @@ class LbryumTest(unittest.TestCase):
 
     def setup(self):
         docker_compose_build()
-        time.sleep(10)# TODO: without this calls to lbrycrd fails... 
+        time.sleep(10)# TODO: without this calls to lbrycrd fails...
         start_time = time.time()
         while 1:
             try:
@@ -73,12 +57,13 @@ class LbryumTest(unittest.TestCase):
         self._send_to_lbryum()
 
         self._test_claim()
+        self._test_claim_sequence()
+
         self._test_claim_reorg()
         self._test_claim_abandon_reorg()
         self._test_update_reorg()
         self._test_claim_signed_reorg()
         self._test_abandon_signed_reorg()
-
         self._test_invalid_update()
 
     def _test_claim(self):
@@ -87,7 +72,81 @@ class LbryumTest(unittest.TestCase):
                             None,True,None,None,None,True,True,True)
         self.assertTrue('txid' in claim_out)
         self.assertTrue(wait_for_lbrynet_sync('lbryum-server',claim_out['txid']))
-        increment_blocks(1)
+        increment_blocks(1,'lbryum-server')
+
+    def _test_claim_sequence(self):
+        # test handling of claim sequence numbers here
+
+        # make 2 claims
+        claim_1_out = call_lbryum('claim','testsequenceclaim','test',0.01,
+                            None,True,None,None,None,True,True,True)
+        self.assertTrue('txid' in claim_1_out)
+        self.assertTrue(wait_for_lbrynet_sync('lbryum-server',claim_1_out['txid']))
+        increment_blocks(1,'lbryum-server')
+
+        out = call_lbryum('getnthclaimforname','testsequenceclaim',1)
+        self.assertEqual(claim_1_out['txid'],out['txid'])
+        self.assertEqual(claim_1_out['nout'],out['nout'])
+
+        claim_2_out = call_lbryum('claim','testsequenceclaim','test',0.01,
+                            None,True,None,None,None,True,True,True)
+        self.assertTrue('txid' in claim_2_out)
+        self.assertTrue(wait_for_lbrynet_sync('lbryum-server',claim_2_out['txid']))
+        increment_blocks(1,'lbryum-server')
+
+        out = call_lbryum('getnthclaimforname','testsequenceclaim',2)
+        self.assertEqual(claim_2_out['txid'],out['txid'])
+        self.assertEqual(claim_2_out['nout'],out['nout'])
+
+        out = call_lbryum('getnthclaimforname','testsequenceclaim',1)
+        self.assertEqual(claim_1_out['txid'],out['txid'])
+        self.assertEqual(claim_1_out['nout'],out['nout'])
+
+        # Test update does not affect sequence
+        update_1_out = call_lbryum('update','testsequenceclaim','updateclaim',0.01, None,
+                    claim_1_out['claim_id'], claim_1_out['txid'], claim_1_out['nout'],True,None,
+                    None, None, True, True)
+        self.assertTrue('txid' in update_1_out)
+        self.assertTrue(wait_for_lbrynet_sync('lbryum-server',update_1_out['txid']))
+        increment_blocks(1,'lbryum-server')
+
+        out = call_lbryum('getnthclaimforname','testsequenceclaim',2)
+        self.assertEqual(claim_2_out['txid'],out['txid'])
+        self.assertEqual(claim_2_out['nout'],out['nout'])
+
+        out = call_lbryum('getnthclaimforname','testsequenceclaim',1)
+        self.assertEqual(update_1_out['txid'],out['txid'])
+        self.assertEqual(update_1_out['nout'],out['nout'])
+
+
+        # Test abandon of claim 1 (claim 2 will become claim 1)
+        abandon_out = call_lbryum('abandon',claim_1_out['claim_id'])
+        self.assertTrue('txid' in abandon_out)
+        self.assertTrue(wait_for_lbrynet_sync('lbryum-server',abandon_out['txid']))
+        increment_blocks(1,'lbryum-server')
+
+
+        out = call_lbryum('getnthclaimforname','testsequenceclaim',1)
+        self.assertEqual(claim_2_out['txid'],out['txid'])
+        self.assertEqual(claim_2_out['nout'],out['nout'])
+
+        out = call_lbryum('getnthclaimforname','testsequenceclaim',2)
+        self.assertEqual({},out)
+
+        # Test abandon of claim 2 (no more claims)
+        abandon_out = call_lbryum('abandon',claim_2_out['claim_id'])
+        self.assertTrue('txid' in abandon_out)
+        self.assertTrue(wait_for_lbrynet_sync('lbryum-server',abandon_out['txid']))
+        increment_blocks(1,'lbryum-server')
+
+        out = call_lbryum('getnthclaimforname','testsequenceclaim',1)
+        self.assertEqual({},out)
+
+        out = call_lbryum('getnthclaimforname','testsequenceclaim',2)
+        self.assertEqual({},out)
+
+
+
 
     def _test_abandon_signed_reorg(self):
         # test abandon of a signed claim being reorged out
@@ -119,7 +178,7 @@ class LbryumTest(unittest.TestCase):
             out = call_lbryum('getclaimsinchannel', '@channel2')
             self.assertEqual(0, len(out))
 
-            out = call_lbrycrd_lbryum_server('getvalueforname','abandonsigned')
+            out = lbrycrds['lbryum-server'].getvalueforname('abandonsigned')
             self.assertEqual({},out)
             out = call_lbryum('getvalueforname','abandonedsigned')
             self.assertTrue('error' in out)
@@ -127,7 +186,7 @@ class LbryumTest(unittest.TestCase):
 
         def _post_reorg_func():
             # check claim
-            out = call_lbrycrd_lbryum_server('getvalueforname','abandonsigned')
+            out = lbrycrds['lbryum-server'].getvalueforname('abandonsigned')
             self.assertEqual(out['txid'],self.claim_out['txid'])
             self.assertEqual(out['n'],self.claim_out['nout'])
 
@@ -162,7 +221,7 @@ class LbryumTest(unittest.TestCase):
 
         def _mid_reorg_func():
             # check claim
-            out = call_lbrycrd_lbryum_server('getvalueforname','signedclaimreorgtest')
+            out = lbrycrds['lbryum-server'].getvalueforname('signedclaimreorgtest')
             self.assertEqual(out['txid'],self.claim_out['txid'])
             self.assertEqual(out['n'],self.claim_out['nout'])
             out = call_lbryum('getvalueforname','signedclaimreorgtest')
@@ -178,7 +237,7 @@ class LbryumTest(unittest.TestCase):
             out = call_lbryum('getclaimsinchannel', '@channel')
             self.assertEqual(0, len(out))
 
-            out = call_lbrycrd_lbryum_server('getvalueforname','signedclaimreorgtest')
+            out = lbrycrds['lbryum-server'].getvalueforname('signedclaimreorgtest')
             self.assertEqual({},out)
             out = call_lbryum('getvalueforname','signedclaimreorgtest')
             self.assertTrue('error' in out)
@@ -213,7 +272,7 @@ class LbryumTest(unittest.TestCase):
 
         def _mid_reorg_func():
             # check claim
-            out = call_lbrycrd_lbryum_server('getvalueforname','abandonreorgtest')
+            out = lbrycrds['lbryum-server'].getvalueforname('abandonreorgtest')
             self.assertEqual({},out)
             out = call_lbryum('getvalueforname','abandonreorgtest')
             self.assertTrue('error' in out)
@@ -258,7 +317,7 @@ class LbryumTest(unittest.TestCase):
 
         def _mid_reorg_func():
             # This should be the update
-            out = call_lbrycrd_lbryum_server('getvalueforname','updatereorgtest')
+            out = lbrycrds['lbryum-server'].getvalueforname('updatereorgtest')
             self.assertEqual(self.update_out['claim_id'], out['claimId'])
             self.assertEqual('updateclaim', out['value'])
             self.assertEqual(self.update_out['txid'], out['txid'])
@@ -271,7 +330,7 @@ class LbryumTest(unittest.TestCase):
 
         def _post_reorg_func():
             # Update will be reorged out, this should be the claim
-            out = call_lbrycrd_lbryum_server('getvalueforname','updatereorgtest')
+            out = lbrycrds['lbryum-server'].getvalueforname('updatereorgtest')
             self.assertEqual(self.claim_out['txid'],out['txid'])
             self.assertEqual(self.claim_out['nout'],out['n'])
 
@@ -293,14 +352,14 @@ class LbryumTest(unittest.TestCase):
 
         def _pre_reorg_func():
             # check claim
-            out = call_lbrycrd_lbryum_server('getvalueforname','claimreorgtest')
+            out = lbrycrds['lbryum-server'].getvalueforname('claimreorgtest')
             self.assertEqual(self.claim_id, out['claimId'])
             out = call_lbryum('getvalueforname','claimreorgtest')
             self.assertEqual(self.claim_id, out['claim_id'])
 
         def _post_reorg_func():
             # check claim
-            out = call_lbrycrd_lbryum_server('getvalueforname','claimreorgtest')
+            out = lbrycrds['lbryum-server'].getvalueforname('claimreorgtest')
             self.assertEqual({},out)
             out = call_lbryum('getvalueforname','claimreorgtest')
 
@@ -349,9 +408,9 @@ class LbryumTest(unittest.TestCase):
         height = lbrycrds['lbryum-server'].getblockcount()
 
         # generate block on lbryum server
-        call_lbrycrd_lbryum_server('generate', reorg_blocks)
-        best_block_hash = call_lbrycrd_lbryum_server('getbestblockhash')
-        self.assertEqual(height+reorg_blocks, call_lbrycrd_lbryum_server('getblockcount'))
+        lbrycrds['lbryum-server'].generate(reorg_blocks)
+        best_block_hash = lbrycrds['lbryum-server'].getbestblockhash()
+        self.assertEqual(height+reorg_blocks, lbrycrds['lbryum-server'].getblockcount())
         start_time = time.time()
         while 1:
             # wait till lbryum blockhash is best
@@ -365,11 +424,11 @@ class LbryumTest(unittest.TestCase):
 
         # generate 1 more blocks on lbrycrdd and connect , this will
         # trigger a reorg
-        call_lbrycrd('generate', reorg_blocks+1)
-        block_hash = call_lbrycrd('getbestblockhash')
-        self.assertEqual(height+reorg_blocks+1, call_lbrycrd('getblockcount'))
-        call_lbrycrd_lbryum_server('setban','0.0.0.0/0','remove');
-        call_lbrycrd('setban',lbryum_server_lbrycrd_mask,'remove');
+        lbrycrds['lbrycrd'].generate(reorg_blocks+1)
+        block_hash = lbrycrds['lbrycrd'].getbestblockhash()
+        self.assertEqual(height+reorg_blocks+1, lbrycrds['lbrycrd'].getblockcount())
+        lbrycrds['lbryum-server'].setban('0.0.0.0/0','remove');
+        lbrycrds['lbrycrd'].setban(lbryum_server_lbrycrd_mask,'remove');
 
         # unban and connect
         lbrycrds['lbryum-server'].addnode(lbrycrd_addr,'onetry')
@@ -393,7 +452,7 @@ class LbryumTest(unittest.TestCase):
     def _test_invalid_update(self):
         # send balance to lbryum instance
         address = call_lbryum('getunusedaddress')
-        out = call_lbrycrd('sendtoaddress',address,1)
+        out = lbrycrds['lbrycrd'].sendtoaddress(address,1)
         increment_blocks(6)
 
         claim_out = call_lbryum('claim','invalidupdate','test',0.01,

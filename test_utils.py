@@ -67,6 +67,23 @@ def call_lbryum(method, *params):
         raise
     return out
 
+# wait till txid appears on lbrycrd instance, 
+# return True if it does within timeout
+def wait_for_lbrynet_sync(instance, txid, timeout=90):
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            lbrycrd_out = lbrycrds[instance].getrawtransaction(txid)
+        except Exception as e:
+            pass
+        else:
+            if all(c in string.hexdigits for c in lbrycrd_out):
+                return True
+            else:
+                raise Exception('got unexpected output:{}'.format(out))
+        time.sleep(1)
+    return False
+
 
 def docker_compose_build():
     # Make sure to rebuild docker instances
