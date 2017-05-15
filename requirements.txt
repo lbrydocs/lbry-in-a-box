@@ -1,2 +1,3 @@
+git+https://github.com/lbryio/lbryschema.git@v0.0.4#egg=lbryschema
 jsonrpc
 python-bitcoinrpc
