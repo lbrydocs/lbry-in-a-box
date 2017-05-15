@@ -10,7 +10,6 @@ install:
 
 script:
   - bash sync_to_master.sh
-  - bash apply_regtest_patch.sh
   - python integration_testing.py
   - python lbryum_testing.py
 notifications:
