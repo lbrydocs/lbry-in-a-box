@@ -56,15 +56,23 @@ class LbryumTest(unittest.TestCase):
         self.setup()
         self._send_to_lbryum()
 
+
         self._test_claim()
         self._test_claim_sequence()
+        self._test_claim_signed_update()
 
         self._test_claim_reorg()
         self._test_claim_abandon_reorg()
         self._test_update_reorg()
         self._test_claim_signed_reorg()
         self._test_abandon_signed_reorg()
+
+        self._test_update_signed_reorg_unsigned_to_signed()
+        self._test_update_signed_reorg_signed_to_unsigned()
+        self._test_update_signed_reorg_change_cert()
+
         self._test_invalid_update()
+
 
     def _test_claim(self):
         # make claim here, empty claimtrie causes problem in lbryum proofs
@@ -146,6 +154,74 @@ class LbryumTest(unittest.TestCase):
         self.assertEqual({},out)
 
 
+    def _test_claim_signed_update(self):
+       # make certificates
+        cert_out = call_lbryum('claimcertificate', '@claimsignupdatechannel', 0.01)
+        self.assertTrue('txid' in cert_out)
+        self.assertTrue(wait_for_lbrynet_sync('lbryum-server',cert_out['txid']))
+        self.assertTrue(increment_blocks(1, 'lbryum-server'))
+
+        cert_out_2 = call_lbryum('claimcertificate', '@claimsignupdatechannel2', 0.01)
+        self.assertTrue('txid' in cert_out_2)
+        self.assertTrue(wait_for_lbrynet_sync('lbryum-server',cert_out_2['txid']))
+        self.assertTrue(increment_blocks(1, 'lbryum-server'))
+
+        # make a claim with out signing
+
+        claim_val = ClaimDict.load_dict(TEST_METADATA).serialized.encode('hex')
+        claim_out = call_lbryum('claim','claimsignupdate',claim_val,0.01)
+        self.assertTrue('txid' in claim_out)
+        self.assertTrue(wait_for_lbrynet_sync('lbryum-server',claim_out['txid']))
+        self.assertTrue(increment_blocks(6, 'lbryum-server'))
+
+        # update the claim with signing
+        update_out = call_lbryum('update','claimsignupdate',claim_val,0.01,
+                cert_out['claim_id'],claim_out['claim_id'], claim_out['txid'], claim_out['nout'])
+
+        self.assertTrue('txid' in update_out)
+        self.assertTrue(wait_for_lbrynet_sync('lbryum-server',update_out['txid']))
+        increment_blocks(6,'lbryum-server')
+
+        out = call_lbryum('getclaimsinchannel', '@claimsignupdatechannel')
+        self.assertEqual(1, len(out))
+        self.assertEqual(update_out['txid'], out[0]['txid'])
+        self.assertEqual(update_out['nout'], out[0]['nout'])
+
+        out = call_lbryum('getclaimsinchannel', '@claimsignupdatechannel2')
+        self.assertEqual(0, len(out))
+
+        #update it, with same certificate
+        update_out = call_lbryum('update','claimsignupdate',claim_val,0.01,
+                cert_out['claim_id'],claim_out['claim_id'], update_out['txid'], update_out['nout'])
+
+        self.assertTrue('txid' in update_out)
+        self.assertTrue(wait_for_lbrynet_sync('lbryum-server',update_out['txid']))
+        increment_blocks(6,'lbryum-server')
+
+        out = call_lbryum('getclaimsinchannel', '@claimsignupdatechannel')
+        self.assertEqual(1, len(out))
+        self.assertEqual(update_out['txid'], out[0]['txid'])
+        self.assertEqual(update_out['nout'], out[0]['nout'])
+
+        out = call_lbryum('getclaimsinchannel', '@claimsignupdatechannel2')
+        self.assertEqual(0, len(out))
+
+
+        #update it, with different certficates
+        update_out = call_lbryum('update','claimsignupdate',claim_val,0.01,
+                cert_out_2['claim_id'],claim_out['claim_id'], update_out['txid'], update_out['nout'])
+        self.assertTrue('txid' in update_out)
+        self.assertTrue(wait_for_lbrynet_sync('lbryum-server',update_out['txid']))
+        increment_blocks(6,'lbryum-server')
+
+        out = call_lbryum('getclaimsinchannel', '@claimsignupdatechannel')
+        self.assertEqual(0, len(out))
+
+        out = call_lbryum('getclaimsinchannel', '@claimsignupdatechannel2')
+        self.assertEqual(1, len(out))
+        self.assertEqual(update_out['txid'], out[0]['txid'])
+        self.assertEqual(update_out['nout'], out[0]['nout'])
+
 
 
     def _test_abandon_signed_reorg(self):
@@ -160,8 +236,8 @@ class LbryumTest(unittest.TestCase):
 
             # make claim
             metadata = TEST_METADATA
-
             claim_val = ClaimDict.load_dict(metadata).serialized.encode('hex')
+
             self.claim_out = call_lbryum('claim','abandonsigned',claim_val,0.01, self.cert_out['claim_id'])
             self.assertTrue('txid' in self.claim_out)
             self.assertTrue(wait_for_lbrynet_sync('lbryum-server',self.claim_out['txid']))
@@ -199,6 +275,141 @@ class LbryumTest(unittest.TestCase):
             self.assertEqual(self.claim_out['txid'], out[0]['txid'])
             self.assertEqual(self.claim_out['nout'], out[0]['nout'])
 
+
+        self._test_reorg(_pre_setup_func,_setup_reorg_func,_mid_reorg_func,_post_reorg_func)
+
+
+    def _test_update_signed_reorg_change_cert(self):
+        # test reorg of an update where it changes certificate of a claim
+
+        def _pre_setup_func():
+            # make certificate claims
+            self.cert_out = call_lbryum('claimcertificate', '@updatereorgcert', 0.01)
+            self.assertTrue('txid' in self.cert_out)
+            self.assertTrue(wait_for_lbrynet_sync('lbryum-server',self.cert_out['txid']))
+            self.assertTrue(increment_blocks(6, 'lbryum-server'))
+
+            self.cert_out_2 = call_lbryum('claimcertificate', '@updatereorgcert2', 0.01)
+            self.assertTrue('txid' in self.cert_out_2)
+            self.assertTrue(wait_for_lbrynet_sync('lbryum-server',self.cert_out_2['txid']))
+            self.assertTrue(increment_blocks(6, 'lbryum-server'))
+
+            # make signed claim
+            claim_val = ClaimDict.load_dict(TEST_METADATA).serialized.encode('hex')
+            self.claim_signed_out = call_lbryum('claim','updatereorgcert',claim_val,0.01, self.cert_out['claim_id'])
+            print self.claim_signed_out
+            self.assertTrue('txid' in self.claim_signed_out)
+            self.assertTrue(wait_for_lbrynet_sync('lbryum-server',self.claim_signed_out['txid']))
+            self.assertTrue(increment_blocks(6, 'lbryum-server'))
+
+        def _setup_reorg_func():
+            claim_val = ClaimDict.load_dict(TEST_METADATA).serialized.encode('hex')
+            # update cert to different cert
+            self.update_out = call_lbryum('update','updatereorgcert',claim_val,0.01, self.cert_out_2['claim_id'],self.claim_signed_out['claim_id'],self.claim_signed_out['txid'],self.claim_signed_out['nout'])
+            self.assertTrue('txid' in self.update_out)
+            self.assertTrue(wait_for_lbrynet_sync('lbryum-server',self.update_out['txid']))
+
+        def _mid_reorg_func():
+            # check claim
+            out = call_lbryum('getclaimsinchannel', '@updatereorgcert')
+            self.assertEqual(0,len(out))
+            out = call_lbryum('getclaimsinchannel', '@updatereorgcert2')
+            self.assertEqual(1, len(out))
+            self.assertEqual(self.update_out['txid'], out[0]['txid'])
+            self.assertEqual(self.update_out['nout'], out[0]['nout'])
+
+        def _post_reorg_func():
+            out = call_lbryum('getclaimsinchannel', '@updatereorgcert')
+            self.assertEqual(1, len(out))
+            self.assertEqual(self.claim_signed_out['txid'], out[0]['txid'])
+            self.assertEqual(self.claim_signed_out['nout'], out[0]['nout'])
+            out = call_lbryum('getclaimsinchannel', '@updatereorgcert2')
+            self.assertEqual(0,len(out))
+
+        self._test_reorg(_pre_setup_func,_setup_reorg_func,_mid_reorg_func,_post_reorg_func)
+
+
+
+
+    def _test_update_signed_reorg_signed_to_unsigned(self):
+        # test reorg of an update where it changes a signed claim to unsigned
+        
+        def _pre_setup_func():
+            # make certificate claims
+            self.cert_out = call_lbryum('claimcertificate', '@reorgtest22channel', 0.01)
+            self.assertTrue('txid' in self.cert_out)
+            self.assertTrue(wait_for_lbrynet_sync('lbryum-server',self.cert_out['txid']))
+            self.assertTrue(increment_blocks(6, 'lbryum-server'))
+
+            # make signed claim
+            claim_val = ClaimDict.load_dict(TEST_METADATA).serialized.encode('hex')
+            self.claim_signed_out = call_lbryum('claim','reorgtest22',claim_val,0.01, self.cert_out['claim_id'])
+            print self.claim_signed_out
+            self.assertTrue('txid' in self.claim_signed_out)
+            self.assertTrue(wait_for_lbrynet_sync('lbryum-server',self.claim_signed_out['txid']))
+            self.assertTrue(increment_blocks(6, 'lbryum-server'))
+
+        def _setup_reorg_func():
+            claim_val = ClaimDict.load_dict(TEST_METADATA).serialized.encode('hex')
+            # update signed claim to unsigned
+            self.update_out = call_lbryum('update','reorgtest22',claim_val,0.01, None,self.claim_signed_out['claim_id'],self.claim_signed_out['txid'],self.claim_signed_out['nout'])
+            self.assertTrue('txid' in self.update_out)
+            self.assertTrue(wait_for_lbrynet_sync('lbryum-server',self.update_out['txid']))
+
+        def _mid_reorg_func():
+            # check claim
+            out = call_lbryum('getclaimsinchannel', '@reorgtest22channel')
+            self.assertEqual(0, len(out))
+
+        def _post_reorg_func():
+            out = call_lbryum('getclaimsinchannel', '@reorgtest22channel')
+            self.assertEqual(1, len(out))
+            self.assertEqual(self.claim_signed_out['txid'], out[0]['txid'])
+            self.assertEqual(self.claim_signed_out['nout'], out[0]['nout'])
+
+        self._test_reorg(_pre_setup_func,_setup_reorg_func,_mid_reorg_func,_post_reorg_func)
+
+
+    def _test_update_signed_reorg_unsigned_to_signed(self):
+        # test reorg of an update where it changes an unsigned claim to signed
+        def _pre_setup_func():
+            # make certificate claims
+            self.cert_out = call_lbryum('claimcertificate', '@reorgupdatetest3channel', 0.01)
+            self.assertTrue('txid' in self.cert_out)
+            self.assertTrue(wait_for_lbrynet_sync('lbryum-server',self.cert_out['txid']))
+            self.assertTrue(increment_blocks(6, 'lbryum-server'))
+
+
+            # make unsigned claim
+            claim_val = ClaimDict.load_dict(TEST_METADATA).serialized.encode('hex')
+            self.claim_unsigned_out = call_lbryum('claim','reorgupdatetest3',claim_val,0.01)
+            self.assertTrue('txid' in self.claim_unsigned_out)
+            self.assertTrue(wait_for_lbrynet_sync('lbryum-server',self.claim_unsigned_out['txid']))
+            self.assertTrue(increment_blocks(6, 'lbryum-server'))
+
+        def _setup_reorg_func():
+
+            claim_val = ClaimDict.load_dict(TEST_METADATA).serialized.encode('hex')
+
+            # update unsigned claim to sgined
+            self.signed_update_out = call_lbryum('update','reorgupdatetest3',claim_val,0.01,
+                    self.cert_out['claim_id'],self.claim_unsigned_out['claim_id'], self.claim_unsigned_out['txid'], self.claim_unsigned_out['nout'])
+
+            self.assertTrue('txid' in self.signed_update_out)
+            self.assertTrue(wait_for_lbrynet_sync('lbryum-server',self.signed_update_out['txid']))
+
+        def _mid_reorg_func():
+            # check claim
+
+            out = call_lbryum('getclaimsinchannel', '@reorgupdatetest3channel')
+            self.assertEqual(1, len(out))
+            self.assertEqual(self.signed_update_out['txid'], out[0]['txid'])
+            self.assertEqual(self.signed_update_out['nout'], out[0]['nout'])
+
+        def _post_reorg_func():
+
+            out = call_lbryum('getclaimsinchannel', '@reorgupdatetest3channel')
+            self.assertEqual(0, len(out))
 
         self._test_reorg(_pre_setup_func,_setup_reorg_func,_mid_reorg_func,_post_reorg_func)
 
@@ -368,7 +579,7 @@ class LbryumTest(unittest.TestCase):
 
     def _send_to_lbryum(self):
         address = call_lbryum('getunusedaddress')
-        out = lbrycrds['lbrycrd'].sendtoaddress(address,10)
+        out = lbrycrds['lbrycrd'].sendtoaddress(address,20)
         increment_blocks(6)
 
     def _test_reorg(self, pre_setup_func, setup_func, mid_reorg_func, post_reorg_func, reorg_blocks=3):
