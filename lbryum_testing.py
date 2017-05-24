@@ -28,9 +28,6 @@ def increment_blocks(num_blocks, instance='lbrycrd', timeout=60):
     return False
 
 
-def wait_for_txid_in_lbryum(txid):
-    return call_lbryum('waitfortxinwallet',txid)
-
 TEST_METADATA ={u'version': u'_0_0_1', u'claimType': u'streamType', u'stream': {u'source': {u'source': u'cc04fd50bc58c9393945307eafa7e7981212bf2ded47b198deca5a9d4a4f3d3f42420b5b91dbc642df5d3a54518c213b', u'version': u'_0_0_1', u'contentType': u'text/plain', u'sourceType': u'lbry_sd_hash'}, u'version': u'_0_0_1', u'metadata': {u'description': u'test_description', u'license': u'NASA', u'author': u'test_author', u'title': u'test_title', u'language': u'en', u'version': u'_0_1_0', u'nsfw': False, u'licenseUrl': u'', u'preview': u'', u'thumbnail': u''}}}
 
 DEFAULT_CLAIMVAL = ClaimDict.load_dict(TEST_METADATA).serialized.encode('hex')
@@ -234,7 +231,7 @@ class LbryumTest(unittest.TestCase):
         self.assertEqual(0, len(out))
 
         #update it, with same certificate
-        update_out = call_lbryum('update','claimsignupdate',claim_val,0.01,
+        update_out = call_lbryum('update','claimsignupdate',DEFAULT_CLAIMVAL,0.01,
                 cert_out['claim_id'],claim_out['claim_id'], update_out['txid'], update_out['nout'])
 
         self.assertTrue('txid' in update_out)
@@ -251,7 +248,7 @@ class LbryumTest(unittest.TestCase):
 
 
         #update it, with different certficates
-        update_out = call_lbryum('update','claimsignupdate',claim_val,0.01,
+        update_out = call_lbryum('update','claimsignupdate',DEFAULT_CLAIMVAL,0.01,
                 cert_out_2['claim_id'],claim_out['claim_id'], update_out['txid'], update_out['nout'])
         self.assertTrue('txid' in update_out)
         self.assertTrue(call_lbryum('waitfortxinwallet',update_out['txid']))
