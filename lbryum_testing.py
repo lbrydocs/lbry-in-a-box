@@ -218,7 +218,7 @@ class LbryumTest(unittest.TestCase):
         self.assertTrue(increment_blocks(6, 'lbryum-server'))
 
         # update the claim with signing
-        update_out = call_lbryum('update','claimsignupdate',claim_val,0.01,
+        update_out = call_lbryum('update','claimsignupdate',DEFAULT_CLAIMVAL,0.01,
                 cert_out['claim_id'],claim_out['claim_id'], claim_out['txid'], claim_out['nout'])
 
         self.assertTrue('txid' in update_out)
