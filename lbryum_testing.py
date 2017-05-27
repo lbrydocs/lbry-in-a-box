@@ -64,12 +64,11 @@ class LbryumTest(unittest.TestCase):
         self.setup()
         self._send_to_lbryum()
 
+
+        self._test_claim_and_getvalue()
         self._test_claim_sequence()
         self._test_update_same_block()
         self._test_abandon_same_block()
-
-        self._test_claim()
-
         self._test_claim_signed_update()
 
         self._test_claim_reorg()
@@ -83,7 +82,6 @@ class LbryumTest(unittest.TestCase):
         self._test_update_signed_reorg_change_cert()
 
         self._test_invalid_update()
-
 
     def _test_update_same_block(self):
 
@@ -117,13 +115,22 @@ class LbryumTest(unittest.TestCase):
         out = call_lbryum('getclaimbyid', claim_out['claim_id'])
         self.assertEqual({},out)
 
-    def _test_claim(self):
+    def _test_claim_and_getvalue(self):
         # make claim here, empty claimtrie causes problem in lbryum proofs
-        claim_out = call_lbryum('claim','testclaim','test',0.01,
+        claim_out = call_lbryum('claim','testclaim','testval',0.01,
                             None,True,None,None,None,True,True,True)
         self.assertTrue('txid' in claim_out)
         self.assertTrue(call_lbryum('waitfortxinwallet',claim_out['txid']))
         increment_blocks(1,'lbryum-server')
+
+        # test claim that doesn't exist
+        out = call_lbryum('getvalueforname','someclaimnoexistxxx')
+        self.assertTrue('error' in out)
+        self.assertEqual(out['error'],"name is not claimed")
+
+        out = call_lbryum('getvalueforname','testclaim',True)
+        self.assertEqual(out['value'].decode('hex'),'testval')
+
 
     def _test_claim_sequence(self):
         # test handling of claim sequence numbers here
@@ -363,8 +370,7 @@ class LbryumTest(unittest.TestCase):
 
 
     def _test_update_signed_reorg_signed_to_unsigned(self):
-        # test reorg of an update where it changes a signed claim to unsigned
-        
+        # test reorg of an update where it changes a signed claim to unsigned 
         def _pre_setup_func():
             # make certificate claims
             self.cert_out = call_lbryum('claimcertificate', '@reorgtest22channel', 0.01)
@@ -611,10 +617,12 @@ class LbryumTest(unittest.TestCase):
 
         # disconnect lbrycrdd instances,
         lbryum_server_peerinfo = lbrycrds['lbryum-server'].getpeerinfo()
-        lbrycrd_peerinfo = lbrycrds['lbrycrd'].getpeerinfo()
         lbrycrd_addr = lbryum_server_peerinfo[0]['addr']
-        lbrycrds['lbryum-server'].disconnectnode(lbrycrd_addr)
+        lbrycrd_peerinfo = lbrycrds['lbrycrd'].getpeerinfo()
         lbryum_server_lbrycrd_addr = lbrycrd_peerinfo[0]['addr']
+
+        lbrycrds['lbryum-server'].disconnectnode(lbrycrd_addr)
+        #this fails sometimes, already disconnected?
         lbrycrds['lbrycrd'].disconnectnode(lbryum_server_lbrycrd_addr)
         lbrycrds['lbryum-server'].setban('0.0.0.0'+'/0','add')
         lbryum_server_lbrycrd_mask = lbryum_server_lbrycrd_addr.split(':')[0]+'/0'
@@ -675,9 +683,11 @@ class LbryumTest(unittest.TestCase):
         post_reorg_func()
 
 
-    # this test makes sure that invalid updates do not make it in the claim trie
-    # on lbryum server
     def _test_invalid_update(self):
+        """
+        this test makes sure that invalid updates do not make it in the claim trie
+        on lbryum server
+        """
         # send balance to lbryum instance
         address = call_lbryum('getunusedaddress')
         out = lbrycrds['lbrycrd'].sendtoaddress(address,1)
@@ -685,7 +695,6 @@ class LbryumTest(unittest.TestCase):
 
         claim_out = call_lbryum('claim','invalidupdate','test',0.01,
                             None,True,None,None,None,True,True,True)
-
         wait_for_lbrynet_sync('lbrycrd',claim_out['txid'])
         increment_blocks(6)
 
