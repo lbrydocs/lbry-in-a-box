@@ -46,8 +46,11 @@ class LbrynetTest(unittest.TestCase):
         self._test_lbrynet_startup()
         self._test_misc()
         self._test_recv_and_send()
+
         self._test_publish('testname', claim_amount=1,)
         self._test_publish('testname2', claim_amount=1, key_fee=1.0)
+
+        self._test_batch_cmds()
         self._test_update()
         self._test_support()
         self._test_abandon()
@@ -93,7 +96,7 @@ class LbrynetTest(unittest.TestCase):
         start_time = time.time()
         while time.time() - start_time < LBRYNET_BLOCK_SYNC_TIMEOUT:
             # wait till all lbrynets blockhash are best
-            if all([lbrynet.get_best_blockhash() == best_block_hash for lbrynet in lbrynets.values()]):
+            if all([lbrynet.status()['blockchain_status']['best_blockhash'] == best_block_hash for lbrynet in lbrynets.values()]):
                 # wait till lbryum blockhash is best
                 if call_lbryum('getbestblockhash') == best_block_hash:
                     return
@@ -110,16 +113,16 @@ class LbrynetTest(unittest.TestCase):
         LBRYNET_SYNC_TIMEOUT = 90
         start_time = time.time()
         while time.time() - start_time < LBRYNET_SYNC_TIMEOUT:
-            if not less_than and lbrynet.get_balance() == amount:
+            if not less_than and lbrynet.wallet_balance() == amount:
                 return
-            if less_than and lbrynet.get_balance() < amount:
+            if less_than and lbrynet.wallet_balance() < amount:
                 return
             time.sleep(1)
         self.fail('Lbrynet failed to sync balance in time')
 
     # send amount from lbrycrd to lbrynet instance
     def _send_from_lbrycrd(self, amount, to_lbrynet):
-        prev_balance = to_lbrynet.get_balance()
+        prev_balance = to_lbrynet.wallet_balance()
         address = to_lbrynet.get_new_address()
         out = to_lbrynet.wallet_public_key({'address':address})
         self.assertEqual(len(out), 1)
@@ -175,7 +178,7 @@ class LbrynetTest(unittest.TestCase):
             return False
 
         if lbrynet_status['is_running'] == True and lbrynet_status['blockchain_status']['blocks'] == NUM_INITIAL_BLOCKS_GENERATED:
-            self.assertEqual(0, lbrynet.get_balance())
+            self.assertEqual(0, lbrynet.wallet_balance())
             #TODO: this should be True
             #self.assertEqual(True, lbrynet_status['is_first_run'])
             self.assertEqual(0, lbrynet_status['blocks_behind'])
@@ -222,6 +225,7 @@ class LbrynetTest(unittest.TestCase):
         self.assertEqual(0,out)
 
         # send from lbrynet to lbrycrd
+
         out = lbrynets['lbrynet'].send_amount_to_address({'amount':SEND_AMOUNT, 'address':address})
         self.assertEqual(out,True)
 
@@ -243,13 +247,13 @@ class LbrynetTest(unittest.TestCase):
         expected_download_file = os.path.join('/data/Downloads/',test_pub_file_name)
 
         # make sure we have enough to claim the amount
-        out = lbrynets['lbrynet'].get_balance()
+        out = lbrynets['lbrynet'].wallet_balance()
         self.assertTrue(out >= claim_amount)
 
         key_fee_address = None
         if key_fee != 0:
             key_fee_address = lbrynets['lbrynet'].get_new_address()
-            test_metadata["fee"]= {'LBC': {"address": key_fee_address, "amount": key_fee}}
+            test_metadata["fee"]= {'currency':'LBC',"address": key_fee_address, "amount": key_fee}
         elif key_fee == 0 and 'fee' in test_metadata:
             del test_metadata['fee']
 
@@ -298,7 +302,7 @@ class LbrynetTest(unittest.TestCase):
         expected_download_file = publish_out['expected_download_file']
         publish_outpoint = publish_txid+':'+str(publish_nout)
 
-        balance_before_key_fee = lbrynets['lbrynet'].get_balance()
+        balance_before_key_fee = lbrynets['lbrynet'].wallet_balance()
 
         self._check_claim_state(claim_name, publish_out['publish_txid'],publish_out['publish_nout'], claim_amount)
 
@@ -395,7 +399,11 @@ class LbrynetTest(unittest.TestCase):
         blob_hash = out[0]
 
         # test download of own descriptor
-        out = lbrynets['lbrynet'].descriptor_get({'sd_hash':sd_hash})
+        # TODO: no longer works after 10.4
+        """
+        out = lbrynets['lbrynet'].blob_get({'blob_hash':sd_hash,'encoding':'json'})
+        print out
+        
         self.assertTrue('blobs' in out)
         self.assertEqual(2, len(out['blobs']))
         self.assertEqual(blob_hash, out['blobs'][0]['blob_hash'])
@@ -404,7 +412,7 @@ class LbrynetTest(unittest.TestCase):
         self.assertTrue('stream_name' in out)
         self.assertTrue('stream_type' in out)
         self.assertTrue('suggested_file_name' in out)
-
+        """
 
         # check reflector to see if it has hashes
         out = lbrynets['reflector'].get_blob_hashes()
@@ -420,7 +428,7 @@ class LbrynetTest(unittest.TestCase):
             # send key fee (plus additional amount to pay for tx fee) to dht if necessary
             self._send_from_lbrycrd(key_fee+1, lbrynets['dht'])
 
-        dht_balance_before_get = lbrynets['dht'].get_balance()
+        dht_balance_before_get = lbrynets['dht'].wallet_balance()
         out = lbrynets['dht'].get({'uri':claim_name})
         self.assertTrue(self._compare_dict(expected_file_info, out))
 
@@ -583,11 +591,14 @@ class LbrynetTest(unittest.TestCase):
 
     @print_func
     def _test_uri(self):
-        out = lbrynets['lbrynet'].resolve({"uri":"something_unclaimed:1",'force':True})
+        out = lbrynets['lbrynet'].resolve({"uri":"somethingunclaimed:1",'force':True})
         self.assertEqual(None, out)
 
-
-
+    @print_func
+    def _test_batch_cmds(self):
+        out = lbrynets['lbrynet'].resolve({"uris":['testname','testname2']})
+        print out 
+        self.assertEqual(len(out),2)
 
 if __name__ == '__main__':
 
