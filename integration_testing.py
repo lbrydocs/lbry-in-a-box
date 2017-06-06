@@ -44,7 +44,6 @@ class LbrynetTest(unittest.TestCase):
     def test_lbrynet(self):
 
         self._test_lbrynet_startup()
-        self._test_misc()
         self._test_recv_and_send()
 
         self._test_publish('testname', claim_amount=1,)
@@ -169,7 +168,13 @@ class LbrynetTest(unittest.TestCase):
         self.assertEqual(out['error'],'name is not claimed')
 
         out= lbrynets['lbrynet'].resolve({'uri':name,'force':True})
-        self.assertEqual(None, out)
+        self._check_lbrynet_unclaimed_resolve(out)
+
+    def _check_lbrynet_unclaimed_resolve(self, out):
+        self.assertTrue('error' in out)
+        self.assertTrue('is unknown' in out['error'])
+ 
+
 
     def _check_lbrynet_init(self,lbrynet):
         try:
@@ -197,15 +202,7 @@ class LbrynetTest(unittest.TestCase):
             time.sleep(3)
         self.fail('Lbrynet failed to start up')
 
-    @print_func
-    def _test_misc(self):
-        #TODO: these command fail when claimtrie is empty  (no claim has been made) 
-        # test resolve_name for unresolveable name
-        #out = lbrynets['lbrynet'].resolve_name({'name':'some_unclaimed_name'})
-        #self.assertEqual(None, out)
-        #out = lbrynets['lbrynet'].resolve({'uri':'some_unclaimed_name'})
-        #self.assertEqual(None,out)
-        pass
+
 
     """
     receive balance from lbrycrd to lbrynet
@@ -403,7 +400,7 @@ class LbrynetTest(unittest.TestCase):
         """
         out = lbrynets['lbrynet'].blob_get({'blob_hash':sd_hash,'encoding':'json'})
         print out
-        
+
         self.assertTrue('blobs' in out)
         self.assertEqual(2, len(out['blobs']))
         self.assertEqual(blob_hash, out['blobs'][0]['blob_hash'])
@@ -569,17 +566,24 @@ class LbrynetTest(unittest.TestCase):
         publish_out = self._publish(claim_name, claim_amount, key_fee=0, channel_name=channel_name)
 
         out = lbrynets['lbrynet'].resolve({'uri':claim_name,'force':True})
+        self.assertEqual(out['claim']['txid'],publish_out['publish_txid'])
+        self.assertEqual(out['claim']['nout'],publish_out['publish_nout'])
+
+        out = lbrynets['lbrynet'].resolve({'uri':channel_name+'/'+claim_name,'force':True})
+        self.assertEqual(out['claim']['txid'],publish_out['publish_txid'])
+        self.assertEqual(out['claim']['nout'],publish_out['publish_nout'])
+
 
         def check_channel_resolve(out):
             self.assertEqual(out['certificate']['txid'],channel_out['txid'])
             self.assertEqual(out['certificate']['nout'],channel_out['nout'])
             # amount decimal/float
             #self.assertEqual(out['certificate']['amount'],channel_claim_amount)
-            self.assertEqual(len(out['claims_in_channel']),1)
-            self.assertEqual(out['claims_in_channel'][0]['name'],claim_name)
-            self.assertEqual(out['claims_in_channel'][0]['amount'],claim_amount)
-            self.assertEqual(out['claims_in_channel'][0]['txid'],publish_out['publish_txid'])
-            self.assertEqual(out['claims_in_channel'][0]['nout'],publish_out['publish_nout'])
+            #self.assertEqual(len(out['claims_in_channel']),1)
+            #self.assertEqual(out['claims_in_channel'][0]['name'],claim_name)
+            #self.assertEqual(out['claims_in_channel'][0]['amount'],claim_amount)
+            #self.assertEqual(out['claims_in_channel'][0]['txid'],publish_out['publish_txid'])
+            #self.assertEqual(out['claims_in_channel'][0]['nout'],publish_out['publish_nout'])
 
         out = lbrynets['lbrynet'].resolve({'uri':channel_name,'force':True})
         check_channel_resolve(out)
@@ -591,14 +595,27 @@ class LbrynetTest(unittest.TestCase):
 
     @print_func
     def _test_uri(self):
+        # check unclaimed URI's
         out = lbrynets['lbrynet'].resolve({"uri":"somethingunclaimed:1",'force':True})
-        self.assertEqual(None, out)
+        self._check_lbrynet_unclaimed_resolve(out)
+        out = lbrynets['lbrynet'].resolve({"uri":"@somethingunclaimed",'force':True})
+        self._check_lbrynet_unclaimed_resolve(out)
+        out = lbrynets['lbrynet'].resolve({"uri":"@somethingunclaimed/unclaimed",'force':True})
+        self._check_lbrynet_unclaimed_resolve(out)
+
 
     @print_func
     def _test_batch_cmds(self):
         out = lbrynets['lbrynet'].resolve({"uris":['testname','testname2']})
-        print out 
         self.assertEqual(len(out),2)
+
+        out = lbrynets['lbrynet'].resolve({"uris":['someunclaimedname1','someunclaimedname2']})
+        self.assertEqual(len(out),2)
+
+
+        # test pagination
+
+
 
 if __name__ == '__main__':
 
