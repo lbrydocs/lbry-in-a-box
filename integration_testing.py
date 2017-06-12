@@ -122,7 +122,7 @@ class LbrynetTest(unittest.TestCase):
     # send amount from lbrycrd to lbrynet instance
     def _send_from_lbrycrd(self, amount, to_lbrynet):
         prev_balance = to_lbrynet.wallet_balance()
-        address = to_lbrynet.get_new_address()
+        address = to_lbrynet.wallet_new_address()
         out = to_lbrynet.wallet_public_key({'address':address})
         self.assertEqual(len(out), 1)
 
@@ -150,12 +150,16 @@ class LbrynetTest(unittest.TestCase):
 
         # check lbrynet
         out= lbrynets['lbrynet'].resolve({'uri':name,'force':True})
-        if 'claim' in out:
-            self.assertEqual(out['claim']['txid'],txid)
-            self.assertEqual(out['claim']['nout'],nout)
-        elif 'certificate' in out:
-            self.assertEqual(out['certificate']['txid'],txid)
-            self.assertEqual(out['certificate']['nout'],nout)
+        self.assertTrue(name in out)
+
+        if 'claim' in out[name]:
+            self.assertEqual(out[name]['claim']['txid'],txid)
+            self.assertEqual(out[name]['claim']['nout'],nout)
+        elif 'certificate' in out[name]:
+            self.assertEqual(out[name]['certificate']['txid'],txid)
+            self.assertEqual(out[name]['certificate']['nout'],nout)
+        else:
+            self.fail('{} is an invalid resove'.format(out))
 
 
     # check that name is unclaimed
@@ -171,9 +175,10 @@ class LbrynetTest(unittest.TestCase):
         self._check_lbrynet_unclaimed_resolve(out)
 
     def _check_lbrynet_unclaimed_resolve(self, out):
-        self.assertTrue('error' in out)
-        self.assertTrue('is unknown' in out['error'])
- 
+        for claim in out.values():
+            self.assertTrue('error' in claim)
+            #self.assertTrue('is unknown' in claim['error'])
+
 
 
     def _check_lbrynet_init(self,lbrynet):
@@ -249,7 +254,7 @@ class LbrynetTest(unittest.TestCase):
 
         key_fee_address = None
         if key_fee != 0:
-            key_fee_address = lbrynets['lbrynet'].get_new_address()
+            key_fee_address = lbrynets['lbrynet'].wallet_new_address()
             test_metadata["fee"]= {'currency':'LBC',"address": key_fee_address, "amount": key_fee}
         elif key_fee == 0 and 'fee' in test_metadata:
             del test_metadata['fee']
@@ -281,10 +286,10 @@ class LbrynetTest(unittest.TestCase):
     def _compare_dict(self, expected_dict, actual_dict):
         for key,val in expected_dict.iteritems():
             if key not in actual_dict:
-                #print("{} not found".format(key))
+                print("{} not found".format(key))
                 return False
             if expected_dict[key] != actual_dict[key]:
-                #print("{} does not equal {} for key {}".format(expected_dict[key],actual_dict[key],key))
+                print("{} does not equal {} for key {}".format(expected_dict[key],actual_dict[key],key))
                 return False
         return True
 
@@ -302,15 +307,14 @@ class LbrynetTest(unittest.TestCase):
         balance_before_key_fee = lbrynets['lbrynet'].wallet_balance()
 
         self._check_claim_state(claim_name, publish_out['publish_txid'],publish_out['publish_nout'], claim_amount)
-
         # check lbrynet claim states are updated
         out = lbrynets['lbrynet'].claim_show({'name':claim_name})
-        self.assertEqual(claim_name, out['name'])
-        self.assertEqual(publish_txid, out['txid'])
-        self.assertEqual(publish_nout, out['nout'])
-        self.assertEqual(claim_amount, out['amount'])
+        self.assertEqual(claim_name, out['claim']['name'])
+        self.assertEqual(publish_txid, out['claim']['txid'])
+        self.assertEqual(publish_nout, out['claim']['nout'])
+        self.assertEqual(claim_amount, out['claim']['amount'])
         #self.assertEqual([],out['supports'])
-        sd_hash = out['value']['stream']['source']['source']
+        sd_hash = out['claim']['value']['stream']['source']['source']
 
         out = lbrynets['lbrynet'].claim_list_mine()
         found = False
@@ -343,7 +347,7 @@ class LbrynetTest(unittest.TestCase):
         if key_fee != 0:
             expected_metadata['fee'] = {'currency':'LBC','address':key_fee_address,'amount':key_fee,'version':'_0_0_1'}
         out = lbrynets['lbrynet'].resolve_name({'name':claim_name})
-        metadata = out['stream']['metadata']
+        metadata = out['claim']['value']['stream']['metadata']
         #TODO: need to compare entire claim_dict here
         self.assertTrue(self._compare_dict(expected_metadata,metadata))
 
@@ -412,12 +416,12 @@ class LbrynetTest(unittest.TestCase):
         """
 
         # check reflector to see if it has hashes
-        out = lbrynets['reflector'].get_blob_hashes()
+        out = lbrynets['reflector'].blob_list()
         self.assertTrue(sd_hash in out)
         self.assertTrue(blob_hash in out)
 
         # test to see if we can get peers from the dht with the hash
-        out = lbrynets['dht'].get_peers_for_hash({'blob_hash':sd_hash})
+        out = lbrynets['dht'].peer_list({'blob_hash':sd_hash})
         self.assertEqual(2, len(out))
 
         # test to see if we can download from dht
@@ -441,7 +445,7 @@ class LbrynetTest(unittest.TestCase):
             time.sleep(1)
 
         # check to see if dht has the downloaded hashes
-        out = lbrynets['dht'].get_blob_hashes()
+        out = lbrynets['dht'].blob_list()
         self.assertTrue(sd_hash in out)
         self.assertTrue(blob_hash in out)
 
@@ -534,9 +538,9 @@ class LbrynetTest(unittest.TestCase):
         self._increment_blocks(6)
 
         out=lbrynets['lbrynet'].claim_show({'name':claim_name})
-        self.assertEqual(claim_name, out['name'])
-        self.assertEqual(publish_out['publish_txid'], out['txid'])
-        self.assertEqual(publish_out['publish_nout'], out['nout'])
+        self.assertEqual(claim_name, out['claim']['name'])
+        self.assertEqual(publish_out['publish_txid'], out['claim']['txid'])
+        self.assertEqual(publish_out['publish_nout'], out['claim']['nout'])
         #self.assertEqual(claim_amount+support_amount, out['effective_amount'])
         #self.assertEqual(1,len(out['supports']))
 
@@ -566,17 +570,18 @@ class LbrynetTest(unittest.TestCase):
         publish_out = self._publish(claim_name, claim_amount, key_fee=0, channel_name=channel_name)
 
         out = lbrynets['lbrynet'].resolve({'uri':claim_name,'force':True})
-        self.assertEqual(out['claim']['txid'],publish_out['publish_txid'])
-        self.assertEqual(out['claim']['nout'],publish_out['publish_nout'])
+        self.assertEqual(out[claim_name]['claim']['txid'],publish_out['publish_txid'])
+        self.assertEqual(out[claim_name]['claim']['nout'],publish_out['publish_nout'])
 
-        out = lbrynets['lbrynet'].resolve({'uri':channel_name+'/'+claim_name,'force':True})
-        self.assertEqual(out['claim']['txid'],publish_out['publish_txid'])
-        self.assertEqual(out['claim']['nout'],publish_out['publish_nout'])
+        uri_claim = channel_name+'/'+claim_name
+        out = lbrynets['lbrynet'].resolve({'uri':uri_claim,'force':True})
+        self.assertEqual(out[uri_claim]['claim']['txid'],publish_out['publish_txid'])
+        self.assertEqual(out[uri_claim]['claim']['nout'],publish_out['publish_nout'])
 
 
-        def check_channel_resolve(out):
-            self.assertEqual(out['certificate']['txid'],channel_out['txid'])
-            self.assertEqual(out['certificate']['nout'],channel_out['nout'])
+        def check_channel_resolve(out,uri):
+            self.assertEqual(out[uri]['certificate']['txid'],channel_out['txid'])
+            self.assertEqual(out[uri]['certificate']['nout'],channel_out['nout'])
             # amount decimal/float
             #self.assertEqual(out['certificate']['amount'],channel_claim_amount)
             #self.assertEqual(len(out['claims_in_channel']),1)
@@ -585,11 +590,13 @@ class LbrynetTest(unittest.TestCase):
             #self.assertEqual(out['claims_in_channel'][0]['txid'],publish_out['publish_txid'])
             #self.assertEqual(out['claims_in_channel'][0]['nout'],publish_out['publish_nout'])
 
-        out = lbrynets['lbrynet'].resolve({'uri':channel_name,'force':True})
-        check_channel_resolve(out)
+        uri = channel_name
+        out = lbrynets['lbrynet'].resolve({'uri':uri,'force':True})
+        check_channel_resolve(out,uri)
 
-        out = lbrynets['lbrynet'].resolve({'uri':channel_name+':1','force':True})
-        check_channel_resolve(out)
+        uri = channel_name+':1'
+        out = lbrynets['lbrynet'].resolve({'uri':uri,'force':True})
+        check_channel_resolve(out,uri)
 
 
 
