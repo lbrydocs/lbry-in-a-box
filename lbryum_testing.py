@@ -83,6 +83,7 @@ class LbryumTest(unittest.TestCase):
 
         self._test_invalid_update()
 
+    @print_func
     def _test_update_same_block(self):
 
         claim_out = call_lbryum('claim','updatesameblock','test',0.01,
@@ -101,6 +102,7 @@ class LbryumTest(unittest.TestCase):
         self.assertEqual(out['txid'],update_out['txid'])
         self.assertEqual(out['nout'],update_out['nout'])
 
+    @print_func
     def _test_abandon_same_block(self):
         claim_out = call_lbryum('claim','abandonsameblock','test',0.01,
                             None,True,None,None,None,True,True,True)
@@ -115,6 +117,7 @@ class LbryumTest(unittest.TestCase):
         out = call_lbryum('getclaimbyid', claim_out['claim_id'])
         self.assertEqual({},out)
 
+    @print_func
     def _test_claim_and_getvalue(self):
         # make claim here, empty claimtrie causes problem in lbryum proofs
         claim_out = call_lbryum('claim','testclaim','testval',0.01,
@@ -132,6 +135,7 @@ class LbryumTest(unittest.TestCase):
         self.assertEqual(out['value'].decode('hex'),'testval')
 
 
+    @print_func
     def _test_claim_sequence(self):
         # test handling of claim sequence numbers here
 
@@ -203,6 +207,7 @@ class LbryumTest(unittest.TestCase):
         self.assertEqual({},out)
 
 
+    @print_func
     def _test_claim_signed_update(self):
        # make certificates
         cert_out = call_lbryum('claimcertificate', '@claimsignupdatechannel', 0.01)
@@ -271,6 +276,7 @@ class LbryumTest(unittest.TestCase):
 
 
 
+    @print_func
     def _test_abandon_signed_reorg(self):
         # test abandon of a signed claim being reorged out
         def _pre_setup_func():
@@ -321,6 +327,7 @@ class LbryumTest(unittest.TestCase):
         self._test_reorg(_pre_setup_func,_setup_reorg_func,_mid_reorg_func,_post_reorg_func)
 
 
+    @print_func
     def _test_update_signed_reorg_change_cert(self):
         # test reorg of an update where it changes certificate of a claim
 
@@ -369,6 +376,7 @@ class LbryumTest(unittest.TestCase):
 
 
 
+    @print_func
     def _test_update_signed_reorg_signed_to_unsigned(self):
         # test reorg of an update where it changes a signed claim to unsigned 
         def _pre_setup_func():
@@ -404,6 +412,7 @@ class LbryumTest(unittest.TestCase):
         self._test_reorg(_pre_setup_func,_setup_reorg_func,_mid_reorg_func,_post_reorg_func)
 
 
+    @print_func
     def _test_update_signed_reorg_unsigned_to_signed(self):
         # test reorg of an update where it changes an unsigned claim to signed
         def _pre_setup_func():
@@ -443,6 +452,7 @@ class LbryumTest(unittest.TestCase):
         self._test_reorg(_pre_setup_func,_setup_reorg_func,_mid_reorg_func,_post_reorg_func)
 
 
+    @print_func
     def _test_claim_signed_reorg(self):
         # test a signed claim being reorged out
         def _pre_setup_func():
@@ -485,6 +495,7 @@ class LbryumTest(unittest.TestCase):
         self._test_reorg(_pre_setup_func,_setup_reorg_func,_mid_reorg_func,_post_reorg_func)
 
 
+    @print_func
     def _test_abandon_reorg(self):
         def _pre_setup_func():
             #make original claim to be abandoned
@@ -531,6 +542,7 @@ class LbryumTest(unittest.TestCase):
 
         self._test_reorg(_pre_setup_func,_setup_reorg_func,_mid_reorg_func,_post_reorg_func)
 
+    @print_func
     def _test_update_reorg(self):
         def _pre_setup_func():
             #make original claim to be updated
@@ -582,6 +594,7 @@ class LbryumTest(unittest.TestCase):
 
         self._test_reorg(_pre_setup_func,_setup_reorg_func,_mid_reorg_func,_post_reorg_func)
 
+    @print_func
     def _test_claim_reorg(self):
         def _pre_setup_func():
             pass
@@ -606,7 +619,6 @@ class LbryumTest(unittest.TestCase):
             out = call_lbryum('getvalueforname','claimreorgtest')
 
         self._test_reorg(_pre_setup_func,_setup_reorg_func,_pre_reorg_func,_post_reorg_func)
-
 
 
 
@@ -683,6 +695,7 @@ class LbryumTest(unittest.TestCase):
         post_reorg_func()
 
 
+    @print_func
     def _test_invalid_update(self):
         """
         this test makes sure that invalid updates do not make it in the claim trie

@@ -96,5 +96,13 @@ def docker_compose_build():
     out,err=shell_command('docker-compose up > {}&'.format(DOCKER_LOG_FILE))
 
 
+# wrapper function just to see where we are in the test
+def print_func(func):
+    def wrapper(*args,**kwargs):
+        print("Running:{}".format(func.func_name))
+        return func(*args,**kwargs)
+    return wrapper
+
+
 
 

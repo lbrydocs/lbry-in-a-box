@@ -30,14 +30,6 @@ test_metadata = {
     'nsfw': False,
 }
 
-# wrapper function just to see where we are in the test
-def print_func(func):
-    def wrapper(*args,**kwargs):
-        print("Running:{}".format(func.func_name))
-        return func(*args,**kwargs)
-    return wrapper
-
-
 
 class LbrynetTest(unittest.TestCase):
 
@@ -286,10 +278,8 @@ class LbrynetTest(unittest.TestCase):
     def _compare_dict(self, expected_dict, actual_dict):
         for key,val in expected_dict.iteritems():
             if key not in actual_dict:
-                print("{} not found".format(key))
                 return False
             if expected_dict[key] != actual_dict[key]:
-                print("{} does not equal {} for key {}".format(expected_dict[key],actual_dict[key],key))
                 return False
         return True
 
