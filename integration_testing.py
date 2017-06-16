@@ -556,6 +556,9 @@ class LbrynetTest(unittest.TestCase):
 
         out = lbrynets['lbrynet'].channel_list_mine()
         self.assertEqual(1, len(out))
+        self.assertEqual(channel_out['txid'],out[0]['txid'])
+        self.assertEqual(channel_out['nout'],out[0]['nout'])
+        self.assertEqual(channel_name, out[0]['name'])
 
         publish_out = self._publish(claim_name, claim_amount, key_fee=0, channel_name=channel_name)
 
