@@ -468,13 +468,13 @@ class LbrynetTest(unittest.TestCase):
             self._wait_till_balance_equals(lbrynets['lbrynet'], balance_before_key_fee+key_fee)
         """
 
-        # test file_delete on dht, keep file list on dht empty
-
-        out = lbrynets['dht'].file_delete({'sd_hash':sd_hash})
+        # delete blobs and file
+        out = lbrynets['dht'].file_delete({'sd_hash':sd_hash,'delete_from_download_dir':True})
         self.assertEqual(True,out)
         self.assertFalse(self._check_has_file('dht',publish_out['expected_download_file']))
         out = lbrynets['dht'].file_list()
         self.assertEqual(0, len(out))
+
 
     @print_func
     def _test_update(self, claim_name='updatetest', claim_amount=1, update_amount=2, key_fee=0 ):
