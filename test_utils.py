@@ -86,7 +86,7 @@ def wait_for_lbrynet_sync(instance, txid, timeout=90):
             if all(c in string.hexdigits for c in lbrycrd_out):
                 return True
             else:
-                raise Exception('got unexpected output:{}'.format(out))
+                raise Exception('got unexpected output:{}'.format(lbrycrd_out))
         time.sleep(1)
     return False
 
