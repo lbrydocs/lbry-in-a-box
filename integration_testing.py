@@ -37,6 +37,7 @@ class LbrynetTest(unittest.TestCase):
         self._test_update()
         self._test_support()
         self._test_abandon()
+
         self._test_channels()
         self._test_uri()
         # TODO: should try to remove all errors here, raise error if found
@@ -104,6 +105,7 @@ class LbrynetTest(unittest.TestCase):
         self.fail('Lbrynet failed to sync balance in time')
 
     # send amount from lbrycrd to lbrynet instance
+    # return (txid of created transaction, address sent to)
     def _send_from_lbrycrd(self, amount, to_lbrynet):
         prev_balance = to_lbrynet.wallet_balance()
         address = to_lbrynet.wallet_new_address()
@@ -114,6 +116,7 @@ class LbrynetTest(unittest.TestCase):
         self._is_txid(out)
         self._increment_blocks(6)
         self._wait_till_balance_equals(to_lbrynet, prev_balance + amount)
+        return (out, address)
 
     # check claim for name is occupied by txid/nout
     def _check_claim_state(self, name, txid, nout, amount, effective_amount=None):
@@ -199,7 +202,14 @@ class LbrynetTest(unittest.TestCase):
         RECV_AMOUNT = 10
         SEND_AMOUNT = 1
         LBRYNET_SEND_SYNC_TIMEOUT = 80
-        self._send_from_lbrycrd(RECV_AMOUNT, lbrynets['lbrynet'])
+        txid, address = self._send_from_lbrycrd(RECV_AMOUNT, lbrynets['lbrynet'])
+
+        # check transaction_show command
+        out = lbrynets['lbrynet'].transaction_show({'txid':txid})
+        self.assertTrue('inputs' in out)
+        self.assertTrue('outputs' in out)
+        self.assertTrue(any([o['address'] == address for o in out['outputs']]))
+
 
         # create lbrycrd address
         address = lbrycrds['lbrycrd'].getnewaddress('test')
@@ -222,8 +232,8 @@ class LbrynetTest(unittest.TestCase):
         out = lbrycrds['lbrycrd'].getbalance('test')
         self.assertEqual(SEND_AMOUNT, out)
 
-    def _publish(self, claim_name, claim_amount, key_fee, channel_name=None,
-                 test_pub_file_size=1024):
+
+    def _publish(self, claim_name, claim_amount, key_fee, channel_name=None, test_pub_file_size=1024):
 
         test_pub_file_name = claim_name + '.txt'
         test_pub_file_dir = '/src/lbry'
@@ -561,6 +571,7 @@ class LbrynetTest(unittest.TestCase):
         self.assertEqual(channel_out['nout'], out[0]['nout'])
         self.assertEqual(channel_name, out[0]['name'])
 
+        # publish with channel
         publish_out = self._publish(claim_name, claim_amount, key_fee=0, channel_name=channel_name)
 
         out = lbrynets['lbrynet'].resolve({'uri': claim_name, 'force': True})
