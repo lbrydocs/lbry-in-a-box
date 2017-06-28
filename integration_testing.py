@@ -589,25 +589,26 @@ class LbrynetTest(unittest.TestCase):
         # publish with channel
         publish_out = self._publish(claim_name, claim_amount, key_fee=0, channel_name=channel_name)
 
-        out = lbrynets['lbrynet'].resolve({'uri': claim_name, 'force': True})
-        self.assertEqual(out[claim_name]['claim']['txid'], publish_out['publish_txid'])
-        self.assertEqual(out[claim_name]['claim']['nout'], publish_out['publish_nout'])
+        def check_claim_with_channel(out, uri):
+            claim = out[uri]['claim']
+            self.assertEqual(claim['txid'], publish_out['publish_txid'])
+            self.assertEqual(claim['nout'], publish_out['publish_nout'])
+            self.assertEqual(claim['name'], claim_name)
+            self.assertTrue(claim['signature_is_valid'])
+            self.assertEqual(claim['channel_name'],channel_name)
 
+        out = lbrynets['lbrynet'].resolve({'uri': claim_name, 'force': True})
+        check_claim_with_channel(out,claim_name)
         uri_claim = channel_name + '/' + claim_name
         out = lbrynets['lbrynet'].resolve({'uri': uri_claim, 'force': True})
-        self.assertEqual(out[uri_claim]['claim']['txid'], publish_out['publish_txid'])
-        self.assertEqual(out[uri_claim]['claim']['nout'], publish_out['publish_nout'])
+        check_claim_with_channel(out, uri_claim)
 
         def check_channel_resolve(out, uri):
-            self.assertEqual(out[uri]['certificate']['txid'], channel_out['txid'])
-            self.assertEqual(out[uri]['certificate']['nout'], channel_out['nout'])
-            # amount decimal/float
-            # self.assertEqual(out['certificate']['amount'],channel_claim_amount)
-            # self.assertEqual(len(out['claims_in_channel']),1)
-            # self.assertEqual(out['claims_in_channel'][0]['name'],claim_name)
-            # self.assertEqual(out['claims_in_channel'][0]['amount'],claim_amount)
-            # self.assertEqual(out['claims_in_channel'][0]['txid'],publish_out['publish_txid'])
-            # self.assertEqual(out['claims_in_channel'][0]['nout'],publish_out['publish_nout'])
+            claim = out[uri]['certificate']
+            self.assertEqual(claim['txid'], channel_out['txid'])
+            self.assertEqual(claim['nout'], channel_out['nout'])
+            self.assertEqual(claim['name'], channel_name)
+
 
         uri = channel_name
         out = lbrynets['lbrynet'].resolve({'uri': uri, 'force': True})
