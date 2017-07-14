@@ -7,7 +7,7 @@ and than run integration testing
 """
 
 import unittest
-from urllib2 import URLError
+from urllib2 import URLError,HTTPError
 from httplib import BadStatusLine
 from socket import error
 import os
@@ -37,6 +37,8 @@ class LbrynetTest(unittest.TestCase):
         self._test_update()
         self._test_support()
         self._test_abandon()
+
+        self._test_invalid_claims()
 
         self._test_channels()
         self._test_uri()
@@ -191,14 +193,15 @@ class LbrynetTest(unittest.TestCase):
             time.sleep(3)
         self.fail('Lbrynet failed to start up')
 
-    """
-    receive balance from lbrycrd to lbrynet
-    make sure this test gets run first, so
-    lbrynet has credits required to run some commands
-    """
+
 
     @print_func
     def _test_recv_and_send(self):
+        """
+        receive balance from lbrycrd to lbrynet
+        make sure this test gets run first, so
+        lbrynet has credits required to run some commands
+        """
         RECV_AMOUNT = 10
         SEND_AMOUNT = 1
         LBRYNET_SEND_SYNC_TIMEOUT = 80
@@ -216,8 +219,12 @@ class LbrynetTest(unittest.TestCase):
         out = lbrycrds['lbrycrd'].getbalance('test')
         self.assertEqual(0, out)
 
-        # send from lbrynet to lbrycrd
+        # test error when trying to send more than what we have
+        with self.assertRaises(HTTPError):
+            out = lbrynets['lbrynet'].send_amount_to_address(
+                {'amount':RECV_AMOUNT+10, 'address':address})
 
+        # send from lbrynet to lbrycrd
         out = lbrynets['lbrynet'].send_amount_to_address(
             {'amount': SEND_AMOUNT, 'address': address})
         self.assertEqual(out, True)
@@ -241,8 +248,8 @@ class LbrynetTest(unittest.TestCase):
         expected_download_file = os.path.join('/data/Downloads/', test_pub_file_name)
 
         # make sure we have enough to claim the amount
-        out = lbrynets['lbrynet'].wallet_balance()
-        self.assertTrue(out >= claim_amount)
+        #out = lbrynets['lbrynet'].wallet_balance()
+        #self.assertTrue(out >= claim_amount)
 
         key_fee_address = None
         if key_fee != 0:
@@ -257,6 +264,7 @@ class LbrynetTest(unittest.TestCase):
         out = lbrynets['lbrynet'].publish({
             'name': claim_name, 'file_path': test_pub_file, 'bid': claim_amount,
             'metadata': test_metadata, 'channel_name': channel_name})
+
         self.assertTrue('txid' in out)
         self.assertTrue('nout' in out)
         self.assertTrue('claim_id' in out)
@@ -601,6 +609,17 @@ class LbrynetTest(unittest.TestCase):
         uri = channel_name + ':1'
         out = lbrynets['lbrynet'].resolve({'uri': uri, 'force': True})
         check_channel_resolve(out, uri)
+
+    @print_func
+    def _test_invalid_claims(self):
+        """
+        test various invalid ways of making claims here
+        """
+
+        # test insuficient funds when publishing
+        balance = lbrynets['lbrynet'].wallet_balance()
+        with self.assertRaises(HTTPError):
+            self._publish('insufficientpublish', balance+1, key_fee=0)
 
     @print_func
     def _test_uri(self):
