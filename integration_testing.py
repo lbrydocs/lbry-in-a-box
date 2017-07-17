@@ -42,6 +42,7 @@ class LbrynetTest(unittest.TestCase):
 
         self._test_channels()
         self._test_uri()
+        self._test_misc()
         # TODO: should try to remove all errors here, raise error if found
         print("Printing ERRORS found in log:")
         out, err = shell_command('grep ERROR {}'.format(DOCKER_LOG_FILE))
@@ -147,7 +148,7 @@ class LbrynetTest(unittest.TestCase):
             self.assertEqual(out[name]['certificate']['txid'], txid)
             self.assertEqual(out[name]['certificate']['nout'], nout)
         else:
-            self.fail('{} is an invalid resove'.format(out))
+            self.fail('{} is an invalid resolve'.format(out))
 
     # check that name is unclaimed
     def _check_unclaimed(self, name):
@@ -308,15 +309,21 @@ class LbrynetTest(unittest.TestCase):
 
         self._check_claim_state(claim_name, publish_out['publish_txid'],
                                 publish_out['publish_nout'], claim_amount)
-        # check lbrynet claim states are updated
-        out = lbrynets['lbrynet'].claim_show({'name': claim_name})
-        self.assertEqual(claim_name, out['claim']['name'])
-        self.assertEqual(publish_txid, out['claim']['txid'])
-        self.assertEqual(publish_nout, out['claim']['nout'])
-        self.assertEqual(claim_amount, out['claim']['amount'])
-        # self.assertEqual([],out['supports'])
-        sd_hash = out['claim']['value']['stream']['source']['source']
 
+        # test claim_show function
+        def check_claim_show_out(out):
+            self.assertEqual(claim_name, out['name'])
+            self.assertEqual(publish_txid, out['txid'])
+            self.assertEqual(publish_nout, out['nout'])
+            self.assertEqual(claim_amount, out['amount'])
+
+        out = lbrynets['lbrynet'].claim_show({'txid':publish_txid, 'nout':publish_nout})
+        check_claim_show_out(out)
+        out = lbrynets['lbrynet'].claim_show({'claim_id':claim_id})
+        check_claim_show_out(out)
+        sd_hash = out['value']['stream']['source']['source']
+
+        # test claim_list_mine function
         out = lbrynets['lbrynet'].claim_list_mine()
         found = False
         for claim in out:
@@ -327,6 +334,7 @@ class LbrynetTest(unittest.TestCase):
                 found = True
         self.assertTrue(found)
 
+        # test claim_list function
         out = lbrynets['lbrynet'].claim_list({'name': claim_name})
         self.assertTrue('claims' in out)
         self.assertEqual(1, len(out['claims']))
@@ -542,15 +550,22 @@ class LbrynetTest(unittest.TestCase):
         self.assertTrue('nout' in out)
         self.assertTrue('fee' in out)
 
+        support_txid = out['txid']
+        support_nout = out['nout']
+
         self.assertTrue(wait_for_lbrynet_sync('lbrycrd', out['txid']))
         self._increment_blocks(6)
 
-        out = lbrynets['lbrynet'].claim_show({'name': claim_name})
-        self.assertEqual(claim_name, out['claim']['name'])
-        self.assertEqual(publish_out['publish_txid'], out['claim']['txid'])
-        self.assertEqual(publish_out['publish_nout'], out['claim']['nout'])
-        # self.assertEqual(claim_amount+support_amount, out['effective_amount'])
-        # self.assertEqual(1,len(out['supports']))
+        out = lbrynets['lbrynet'].claim_list({'name':claim_name})
+        self.assertTrue('supports' in out['claims'][0])
+        self.assertEqual(1, len(out['claims'][0]['supports']))
+        self.assertEqual(out['claims'][0]['supports'][0]['amount'], support_amount)
+        self.assertEqual(out['claims'][0]['supports'][0]['txid'], support_txid)
+        self.assertEqual(out['claims'][0]['supports'][0]['nout'], support_nout)
+
+        out = lbrycrds['lbrycrd'].getvalueforname(claim_name)
+        self.assertEqual(out['effective amount'], (claim_amount+support_amount)*100000000)
+
 
     @print_func
     def _test_channels(self, channel_name='@testchannel', channel_claim_amount=0.5,
@@ -582,25 +597,26 @@ class LbrynetTest(unittest.TestCase):
         # publish with channel
         publish_out = self._publish(claim_name, claim_amount, key_fee=0, channel_name=channel_name)
 
-        out = lbrynets['lbrynet'].resolve({'uri': claim_name, 'force': True})
-        self.assertEqual(out[claim_name]['claim']['txid'], publish_out['publish_txid'])
-        self.assertEqual(out[claim_name]['claim']['nout'], publish_out['publish_nout'])
+        def check_claim_with_channel(out, uri):
+            claim = out[uri]['claim']
+            self.assertEqual(claim['txid'], publish_out['publish_txid'])
+            self.assertEqual(claim['nout'], publish_out['publish_nout'])
+            self.assertEqual(claim['name'], claim_name)
+            self.assertTrue(claim['signature_is_valid'])
+            self.assertEqual(claim['channel_name'],channel_name)
 
+        out = lbrynets['lbrynet'].resolve({'uri': claim_name, 'force': True})
+        check_claim_with_channel(out,claim_name)
         uri_claim = channel_name + '/' + claim_name
         out = lbrynets['lbrynet'].resolve({'uri': uri_claim, 'force': True})
-        self.assertEqual(out[uri_claim]['claim']['txid'], publish_out['publish_txid'])
-        self.assertEqual(out[uri_claim]['claim']['nout'], publish_out['publish_nout'])
+        check_claim_with_channel(out, uri_claim)
 
         def check_channel_resolve(out, uri):
-            self.assertEqual(out[uri]['certificate']['txid'], channel_out['txid'])
-            self.assertEqual(out[uri]['certificate']['nout'], channel_out['nout'])
-            # amount decimal/float
-            # self.assertEqual(out['certificate']['amount'],channel_claim_amount)
-            # self.assertEqual(len(out['claims_in_channel']),1)
-            # self.assertEqual(out['claims_in_channel'][0]['name'],claim_name)
-            # self.assertEqual(out['claims_in_channel'][0]['amount'],claim_amount)
-            # self.assertEqual(out['claims_in_channel'][0]['txid'],publish_out['publish_txid'])
-            # self.assertEqual(out['claims_in_channel'][0]['nout'],publish_out['publish_nout'])
+            claim = out[uri]['certificate']
+            self.assertEqual(claim['txid'], channel_out['txid'])
+            self.assertEqual(claim['nout'], channel_out['nout'])
+            self.assertEqual(claim['name'], channel_name)
+
 
         uri = channel_name
         out = lbrynets['lbrynet'].resolve({'uri': uri, 'force': True})
@@ -641,6 +657,17 @@ class LbrynetTest(unittest.TestCase):
 
 
         # test pagination
+
+    @print_func
+    def _test_misc(self):
+        # test claim_show output on non existing claims
+        out = lbrynets['lbrynet'].claim_show({'claim_id':'be1bf9f2296660dd8cbbac03219d01205e2e36ab'})
+        self.assertTrue('error' in out)
+
+        out = lbrynets['lbrynet'].claim_show({'txid':'b67ce42c182a57b9becc408d2baf3ae7a504a8a97c0dc27d884d3e4d62a72473', 'nout':0})
+        self.assertTrue('error' in out)
+
+
 
 
 if __name__ == '__main__':
