@@ -242,15 +242,13 @@ class LbrynetTest(unittest.TestCase):
 
 
     def _publish(self, claim_name, claim_amount, key_fee, channel_name=None, test_pub_file_size=1024):
-
+        """
+        publish a file randomly created with test_pub_file_size
+        """
         test_pub_file_name = claim_name + '.txt'
         test_pub_file_dir = '/src/lbry'
         test_pub_file = os.path.join(test_pub_file_dir, test_pub_file_name)
         expected_download_file = os.path.join('/data/Downloads/', test_pub_file_name)
-
-        # make sure we have enough to claim the amount
-        #out = lbrynets['lbrynet'].wallet_balance()
-        #self.assertTrue(out >= claim_amount)
 
         key_fee_address = None
         if key_fee != 0:
@@ -605,11 +603,21 @@ class LbrynetTest(unittest.TestCase):
             self.assertTrue(claim['signature_is_valid'])
             self.assertEqual(claim['channel_name'],channel_name)
 
+            certificate = out[uri]['certificate']
+            self.assertEqual(certificate['txid'], channel_out['txid'])
+            self.assertEqual(certificate['nout'], channel_out['nout'])
+            self.assertEqual(certificate['name'], channel_name)
+            self.assertEqual(certificate['claim_sequence'], 1)
+
         out = lbrynets['lbrynet'].resolve({'uri': claim_name, 'force': True})
         check_claim_with_channel(out,claim_name)
         uri_claim = channel_name + '/' + claim_name
         out = lbrynets['lbrynet'].resolve({'uri': uri_claim, 'force': True})
         check_claim_with_channel(out, uri_claim)
+        uri_claim = channel_name + '#' + publish_out['claim_id']
+        out = lbrynets['lbrynet'].resolve({'uri': uri_claim, 'force':True})
+        check_claim_with_channel(out, uri_claim)
+
 
         def check_channel_resolve(out, uri):
             claim = out[uri]['certificate']
@@ -625,6 +633,8 @@ class LbrynetTest(unittest.TestCase):
         uri = channel_name + ':1'
         out = lbrynets['lbrynet'].resolve({'uri': uri, 'force': True})
         check_channel_resolve(out, uri)
+
+
 
     @print_func
     def _test_invalid_claims(self):
@@ -646,6 +656,8 @@ class LbrynetTest(unittest.TestCase):
         self._check_lbrynet_unclaimed_resolve(out)
         out = lbrynets['lbrynet'].resolve({"uri": "@somethingunclaimed/unclaimed", 'force': True})
         self._check_lbrynet_unclaimed_resolve(out)
+
+
 
     @print_func
     def _test_batch_cmds(self):
