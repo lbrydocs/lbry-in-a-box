@@ -567,11 +567,6 @@ class LbrynetTest(unittest.TestCase):
         out = lbrycrds['lbrycrd'].getvalueforname(claim_name)
         self.assertEqual(out['effective amount'], (claim_amount+support_amount)*100000000)
 
-        out = lbrynets['lbrynet'].claim_show({'name': claim_name})
-        self.assertEqual(claim_name, out['claim']['name'])
-        self.assertEqual(publish_out['publish_txid'], out['claim']['txid'])
-        self.assertEqual(publish_out['publish_nout'], out['claim']['nout'])
-
         def test_resolve_out(uri, out):
             self.assertTrue('supports' in out[uri]['claim'])
             self.assertEqual(1, len(out[uri]['claim']['supports']))
