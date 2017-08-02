@@ -35,8 +35,8 @@ class LbrynetTest(unittest.TestCase):
 
         self._test_batch_cmds()
         self._test_update()
-        self._test_support()
         self._test_abandon()
+        self._test_support()
 
         self._test_invalid_claims()
 
@@ -545,7 +545,9 @@ class LbrynetTest(unittest.TestCase):
         out = lbrynets['lbrynet'].claim_new_support(
             {'name': claim_name, 'claim_id': publish_out['claim_id'], 'amount': support_amount})
         self.assertTrue('txid' in out)
+        support_txid = out['txid']
         self.assertTrue('nout' in out)
+        support_nout = out['nout']
         self.assertTrue('fee' in out)
 
         support_txid = out['txid']
@@ -560,10 +562,24 @@ class LbrynetTest(unittest.TestCase):
         self.assertEqual(out['claims'][0]['supports'][0]['amount'], support_amount)
         self.assertEqual(out['claims'][0]['supports'][0]['txid'], support_txid)
         self.assertEqual(out['claims'][0]['supports'][0]['nout'], support_nout)
+        self.assertEqual(out['claims'][0]['effective_amount'], claim_amount + support_amount)
 
         out = lbrycrds['lbrycrd'].getvalueforname(claim_name)
         self.assertEqual(out['effective amount'], (claim_amount+support_amount)*100000000)
 
+        def test_resolve_out(uri, out):
+            self.assertTrue('supports' in out[uri]['claim'])
+            self.assertEqual(1, len(out[uri]['claim']['supports']))
+            self.assertEqual({'txid':support_txid,'nout':support_nout,'amount':support_amount},out[uri]['claim']['supports'][0])
+            self.assertEqual(claim_amount + support_amount, out[uri]['claim']['effective_amount'])
+
+        uri = claim_name
+        out = lbrynets['lbrynet'].resolve({'uri':uri, 'force':True})
+        test_resolve_out(uri, out)
+
+        uri = claim_name+':1'
+        out = lbrynets['lbrynet'].resolve({'uri':uri, 'force':True})
+        test_resolve_out(uri, out)
 
     @print_func
     def _test_channels(self, channel_name='@testchannel', channel_claim_amount=0.5,
@@ -614,6 +630,7 @@ class LbrynetTest(unittest.TestCase):
         uri_claim = channel_name + '/' + claim_name
         out = lbrynets['lbrynet'].resolve({'uri': uri_claim, 'force': True})
         check_claim_with_channel(out, uri_claim)
+
         # TODO: this doesn't work yet due to bug
         #uri_claim = channel_name + '#' + publish_out['claim_id']
         #out = lbrynets['lbrynet'].resolve({'uri': uri_claim, 'force':True})
