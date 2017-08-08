@@ -1,0 +1,8 @@
+blob directory: $HOME/.prism
+
+listen: 0.0.0.0
+
+hosts:
+ - 127.0.0.1:2222
+
+max blobs: 10000
