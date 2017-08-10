@@ -334,6 +334,9 @@ class LbrynetTest(unittest.TestCase):
 
         # test claim_list function
         out = lbrynets['lbrynet'].claim_list({'name': claim_name})
+        self.assertTrue('last_takeover_height' in out)
+        self.assertTrue('supports_without_claims' in out)
+        self.assertEqual(0, len(out['supports_without_claims']))
         self.assertTrue('claims' in out)
         self.assertEqual(1, len(out['claims']))
         self.assertEqual(publish_txid, out['claims'][0]['txid'])
