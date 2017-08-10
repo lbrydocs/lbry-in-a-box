@@ -610,6 +610,12 @@ class LbrynetTest(unittest.TestCase):
         self.assertEqual(channel_out['txid'], out[0]['txid'])
         self.assertEqual(channel_out['nout'], out[0]['nout'])
         self.assertEqual(channel_name, out[0]['name'])
+        self.assertEqual(channel_claim_amount, out[0]['amount'])
+        self.assertTrue('address' in out[0])
+        self.assertEqual(6, out[0]['confirmations'])
+        self.assertFalse(out[0]['is_pending'])
+        self.assertFalse(out[0]['is_spent'])
+        self.assertFalse(out[0]['expired'])
 
         # publish with channel
         publish_out = self._publish(claim_name, claim_amount, key_fee=0, channel_name=channel_name)
@@ -701,6 +707,10 @@ class LbrynetTest(unittest.TestCase):
         self.assertTrue('error' in out)
 
 
+        # test claim_list on non existing name
+        out = lbrynets['lbrynet'].claim_list({'name':'someunclaimedname'})
+        self.assertEqual(0, len(out['claims']))
+        self.assertEqual(0, len(out['supports_without_claims']))
 
 
 if __name__ == '__main__':
