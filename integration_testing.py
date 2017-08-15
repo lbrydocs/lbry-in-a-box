@@ -584,6 +584,11 @@ class LbrynetTest(unittest.TestCase):
         out = lbrynets['lbrynet'].resolve({'uri':uri, 'force':True})
         test_resolve_out(uri, out)
 
+        # test abandon of support
+        out = lbrynets['lbrynet'].claim_abandon({'txid':support_txid, 'nout':support_nout})
+        self.assertTrue('txid' in out)
+        self.assertTrue('fee' in out)
+
     @print_func
     def _test_channels(self, channel_name='@testchannel', channel_claim_amount=0.5,
                        claim_name='channelclaim', claim_amount=1):
