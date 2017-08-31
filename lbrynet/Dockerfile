@@ -23,7 +23,6 @@ RUN /app/bin/pip install -U /src/lbryum
 
 ADD reflector-cluster /src/reflector-cluster
 ADD prism.yml /root/.prism.yml
-ADD prism_script.sh /src/prism_script.sh
 RUN mkdir /root/.prism
 RUN /app/bin/pip install -r /src/reflector-cluster/requirements.txt
 RUN /app/bin/pip install -U /src/reflector-cluster
