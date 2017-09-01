@@ -13,3 +13,6 @@
 [submodule "lbryum-server/lbryum-server"]
 	path = lbryum-server/lbryum-server
 	url = https://github.com/lbryio/lbryum-server
+[submodule "lbrynet/reflector-cluster"]
+	path = lbrynet/reflector-cluster
+	url = https://github.com/lbryio/reflector-cluster.git

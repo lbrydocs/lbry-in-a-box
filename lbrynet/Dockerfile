@@ -4,6 +4,7 @@ MAINTAINER jobevers@lbry.io
 # install the requirements
 RUN apt-get update \
  && apt-get install -y  \
+      redis-server \
       libgmp3-dev build-essential \
       git libssl-dev libffi-dev \
       python-protobuf
@@ -19,6 +20,12 @@ RUN /app/bin/pip install -U /src/lbryschema
 
 ADD lbryum /src/lbryum
 RUN /app/bin/pip install -U /src/lbryum
+
+ADD reflector-cluster /src/reflector-cluster
+ADD prism.yml /root/.prism.yml
+RUN mkdir /root/.prism
+RUN /app/bin/pip install -r /src/reflector-cluster/requirements.txt
+RUN /app/bin/pip install -U /src/reflector-cluster
 
 # build the app from source
 ADD lbry/ /src/lbry

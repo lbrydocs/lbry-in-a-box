@@ -50,14 +50,18 @@ services:
       - fake-bittrex
     environment:
       - LBRY_RUN_REFLECTOR_SERVER=true
+      - LBRY_REFLECTOR_PORT=2222
       - LBRY_API_HOST=0.0.0.0
       - LBRY_KNOWN_DHT_NODES=lbrynet:4444,dht:4444
     expose:
+      - 2222
       - 3333
       - 4444
       - 5566
     ports:
       - 5277:5279
+    command: ["/app/bin/run.sh", "reflector-cluster"]
+
   lbrynet:
     build: ./lbrynet
     depends_on:
@@ -75,7 +79,7 @@ services:
     expose:
       - 3333
       - 4444
-
+      - 5566
   lbryum:
     build: ./lbrynet
     depends_on:

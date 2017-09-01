@@ -20,3 +20,4 @@ fi
 (cd lbrynet/lbryschema; git fetch origin; git checkout origin/master)
 (cd lbryum-server/lbryschema; git fetch origin; git checkout origin/master)
 
+(cd lbrynet/reflector-cluster; git fetch origin; git checkout origin/master)
