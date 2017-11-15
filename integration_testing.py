@@ -367,21 +367,16 @@ class LbrynetTest(unittest.TestCase):
         # completed, stopped
         expected_file_info = {
             'download_directory': '/data/Downloads',
-            'name': claim_name,
             'download_path': publish_out['expected_download_file'],
             'file_name': publish_out['file_name'],
             'sd_hash': sd_hash,
             'suggested_file_name': publish_out['file_name'],
-            'outpoint': publish_outpoint,
             'stream_name': publish_out['file_name'],
-            'claim_id': claim_id,
         }
 
         # test download of own file
         out = lbrynets['lbrynet'].get({'uri': claim_name})
         self.assertTrue(self._compare_dict(expected_file_info, out))
-        self.assertTrue(
-            self._compare_dict(expected_metadata, out['metadata']['stream']['metadata']))
 
         # check file is under file_list
         out = lbrynets['lbrynet'].file_list()
@@ -392,28 +387,23 @@ class LbrynetTest(unittest.TestCase):
         self.assertTrue(found_file)
 
         # check file_list filtering works
-        out = lbrynets['lbrynet'].file_list({'name': claim_name})
-        self.assertEqual(1, len(out))
-        self.assertTrue(self._compare_dict(expected_file_info, out[0]))
-        self.assertTrue(
-            self._compare_dict(expected_metadata, out[0]['metadata']['stream']['metadata']))
-
         out = lbrynets['lbrynet'].file_list({'sd_hash': sd_hash})
         self.assertEqual(1, len(out))
         self.assertTrue(self._compare_dict(expected_file_info, out[0]))
-        self.assertTrue(
-            self._compare_dict(expected_metadata, out[0]['metadata']['stream']['metadata']))
 
         out = lbrynets['lbrynet'].file_list({'file_name': publish_out['file_name']})
         self.assertEqual(1, len(out))
         self.assertTrue(self._compare_dict(expected_file_info, out[0]))
-        self.assertTrue(
-            self._compare_dict(expected_metadata, out[0]['metadata']['stream']['metadata']))
 
         # check that we can get its blob
         out = lbrynets['lbrynet'].blob_list({'sd_hash': sd_hash})
         self.assertEqual(1, len(out))
         blob_hash = out[0]
+
+        # check that the blob files exist in the blobfiles folder
+        for b in out:
+            blob_path = os.path.join('/data/lbrynet/blobfiles/', b)
+            self._check_has_file('lbrynet', blob_path)
 
         # test download of own descriptor
         # TODO: no longer works after 10.4
@@ -436,7 +426,12 @@ class LbrynetTest(unittest.TestCase):
         self.assertTrue(sd_hash in out)
         self.assertTrue(blob_hash in out)
 
+        out = lbrynets['reflector'].file_list()
+        self.assertTrue(len(out),1)
+
+
         # test to see if we can get peers from the dht with the hash
+        # (reflector and original publishing node should have them)
         out = lbrynets['dht'].peer_list({'blob_hash': sd_hash})
         self.assertEqual(2, len(out))
 
@@ -518,7 +513,7 @@ class LbrynetTest(unittest.TestCase):
                                 update_amount)
 
         # check file_list
-        out = lbrynets['lbrynet'].file_list({'name': claim_name})
+        out = lbrynets['lbrynet'].file_list({'file_name': update_out['file_name']})
         self.assertEqual(2, len(out))
 
     @print_func
