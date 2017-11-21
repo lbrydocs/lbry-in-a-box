@@ -6,8 +6,7 @@ RUN apt-get update \
  && apt-get install -y  \
       redis-server \
       libgmp3-dev build-essential \
-      git libssl-dev libffi-dev \
-      python-protobuf
+      git libssl-dev libffi-dev
 
 # doing the requirements first allows them to be cached
 ADD lbry/requirements.txt /src/lbry/requirements.txt

@@ -23,12 +23,8 @@ ADD lbrycrdd /usr/local/bin/lbrycrdd
 ADD lbrycrd.conf /data/lbrycrd/lbrycrd.conf
 ADD lbryum.conf /etc/lbryum.conf
 
-# install lbryschema
-# install the requirements
-RUN apt-get update \
- && apt-get install -y  \
-      python-protobuf
 
+# install lbryschema
 ADD lbryschema /src/lbryschema
 RUN pip install -r /src/lbryschema/requirements.txt
 RUN pip install -U /src/lbryschema
