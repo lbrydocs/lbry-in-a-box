@@ -1,7 +1,7 @@
 import unittest
-from test_utils import *
-from socket import error
 import time
+
+from test_utils import *
 
 from lbryschema.claim import ClaimDict
 
@@ -48,6 +48,32 @@ TEST_METADATA = {u'version': u'_0_0_1', u'claimType': u'streamType', u'stream': 
 DEFAULT_CLAIMVAL = ClaimDict.load_dict(TEST_METADATA).serialized.encode('hex')
 
 
+def call_lbryum_claim(claim_name, claim_val, amount):
+    certificate_id = None
+    broadcast = True
+    claim_addr = None
+    tx_fee = None
+    change_addr = None
+    raw = True
+    skip_validate_schema = True
+    skip_update_check = True
+
+    return call_lbryum('claim', claim_name, claim_val, amount,
+                       certificate_id, broadcast, claim_addr, tx_fee, change_addr,
+                       raw, skip_validate_schema, skip_update_check)
+
+def call_lbryum_getnameclaims(txid=None, nout=None):
+    raw = True
+    include_abandoned = False
+    include_supports = True
+    txid = txid
+    nout = nout
+    claim_id = None
+    skip_validate_signatures = True
+    return call_lbryum('getnameclaims', raw, include_abandoned, include_supports, txid, nout,
+                       claim_id, skip_validate_signatures)
+
+
 class LbryumTest(unittest.TestCase):
     def setup(self):
         docker_compose_build()
@@ -75,6 +101,7 @@ class LbryumTest(unittest.TestCase):
         increment_blocks(6)
 
     def test_lbryum(self):
+
         self.setup()
         self._send_to_lbryum()
 
@@ -83,6 +110,7 @@ class LbryumTest(unittest.TestCase):
         self._test_update_same_block()
         self._test_abandon_same_block()
         self._test_claim_signed_update()
+        self._test_expire_renew()
 
         self._test_claim_reorg()
         self._test_abandon_reorg()
@@ -99,8 +127,7 @@ class LbryumTest(unittest.TestCase):
     @print_func
     def _test_update_same_block(self):
 
-        claim_out = call_lbryum('claim', 'updatesameblock', 'test', 0.01,
-                                None, True, None, None, None, True, True, True)
+        claim_out = call_lbryum_claim('updatesameblock', 'test', 0.01)
         self.assertTrue('txid' in claim_out)
         self.assertTrue(call_lbryum('waitfortxinwallet', claim_out['txid']))
         # make update
@@ -118,8 +145,7 @@ class LbryumTest(unittest.TestCase):
 
     @print_func
     def _test_abandon_same_block(self):
-        claim_out = call_lbryum('claim', 'abandonsameblock', 'test', 0.01,
-                                None, True, None, None, None, True, True, True)
+        claim_out = call_lbryum_claim('abandonsameblock', 'test', 0.01)
         self.assertTrue('txid' in claim_out)
         self.assertTrue(call_lbryum('waitfortxinwallet', claim_out['txid']))
 
@@ -134,8 +160,7 @@ class LbryumTest(unittest.TestCase):
     @print_func
     def _test_claim_and_getvalue(self):
         # make claim here, empty claimtrie causes problem in lbryum proofs
-        claim_out = call_lbryum('claim', 'testclaim', 'testval', 0.01,
-                                None, True, None, None, None, True, True, True)
+        claim_out = call_lbryum_claim('testclaim', 'testval', 0.01)
         self.assertTrue('txid' in claim_out)
         self.assertTrue(call_lbryum('waitfortxinwallet', claim_out['txid']))
         increment_blocks(1, 'lbryum-server')
@@ -153,8 +178,7 @@ class LbryumTest(unittest.TestCase):
         # test handling of claim sequence numbers here
 
         # make 2 claims
-        claim_1_out = call_lbryum('claim', 'testsequenceclaim', 'test', 0.01,
-                                  None, True, None, None, None, True, True, True)
+        claim_1_out = call_lbryum_claim('testsequenceclaim', 'test', 0.01)
         self.assertTrue('txid' in claim_1_out)
         self.assertTrue(call_lbryum('waitfortxinwallet', claim_1_out['txid']))
         increment_blocks(1, 'lbryum-server')
@@ -163,8 +187,7 @@ class LbryumTest(unittest.TestCase):
         self.assertEqual(claim_1_out['txid'], out['txid'])
         self.assertEqual(claim_1_out['nout'], out['nout'])
 
-        claim_2_out = call_lbryum('claim', 'testsequenceclaim', 'test', 0.01,
-                                  None, True, None, None, None, True, True, True)
+        claim_2_out = call_lbryum_claim('testsequenceclaim', 'test', 0.01)
         self.assertTrue('txid' in claim_2_out)
         self.assertTrue(call_lbryum('waitfortxinwallet', claim_2_out['txid']))
         increment_blocks(1, 'lbryum-server')
@@ -233,7 +256,7 @@ class LbryumTest(unittest.TestCase):
         self.assertTrue(increment_blocks(1, 'lbryum-server'))
 
         # make a claim with out signing
-        claim_out = call_lbryum('claim', 'claimsignupdate', DEFAULT_CLAIMVAL, 0.01)
+        claim_out = call_lbryum_claim('claimsignupdate', DEFAULT_CLAIMVAL, 0.01)
         self.assertTrue('txid' in claim_out)
         self.assertTrue(call_lbryum('waitfortxinwallet', claim_out['txid']))
         self.assertTrue(increment_blocks(6, 'lbryum-server'))
@@ -766,6 +789,43 @@ class LbryumTest(unittest.TestCase):
 
         out = call_lbryum('getclaimbyid', claim_out['claim_id'])
         self.assertEqual({}, out)
+
+    @print_func
+    def _test_expire_renew(self):
+        claim_name = 'testexpirerenew'
+        broadcast=True
+        skip_validates_schema=True
+
+
+        # make claim and test to see if we can renew it
+        out = call_lbryum_claim(claim_name, 'test', 0.1)
+        txid = out['txid']
+        nout = out['nout']
+        claim_id = out['claim_id']
+        wait_for_lbrynet_sync('lbrycrd', out['txid'])
+        increment_blocks(6)
+
+        claims = call_lbryum_getnameclaims(out['txid'], out['nout'])
+        self.assertTrue(len(claims), 1)
+
+        out = call_lbryum('renewclaim', txid, nout, broadcast, skip_validates_schema)
+        self.assertTrue('txid' in out)
+        self.assertTrue('nout' in out)
+
+        # we should get the new renewed claim and it should replace the old claim
+        claims = call_lbryum_getnameclaims(out['txid'], out['nout'])
+        self.assertTrue(len(claims),1)
+
+        # try to renew the support
+        support = call_lbryum('support', claim_name, claim_id, 0.1)
+        wait_for_lbrynet_sync('lbrycrd', support['txid'])
+        increment_blocks(6)
+        out = call_lbryum('renewclaim', support['txid'], support['nout'], broadcast, skip_validates_schema)
+        self.assertTrue('txid' in out)
+        self.assertTrue('nout' in out)
+
+        claims = call_lbryum_getnameclaims(out['txid'], out['nout'])
+        self.assertTrue(len(claims), 1)
 
 
 if __name__ == '__main__':
