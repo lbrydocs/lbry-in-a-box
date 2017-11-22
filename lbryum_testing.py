@@ -1,7 +1,7 @@
 import unittest
-from test_utils import *
-from socket import error
 import time
+
+from test_utils import *
 
 from lbryschema.claim import ClaimDict
 
@@ -63,14 +63,15 @@ def call_lbryum_claim(claim_name, claim_val, amount):
                        raw, skip_validate_schema, skip_update_check)
 
 def call_lbryum_getnameclaims(txid=None, nout=None):
-     raw=True
-     include_abandoned=False
-     include_supports=True
-     txid=txid
-     nout=nout
-     claim_id=None
-     skip_validate_signatures=True
-     return call_lbryum('getnameclaims',raw, include_abandoned, include_supports, txid, nout, claim_id, skip_validate_signatures)
+    raw = True
+    include_abandoned = False
+    include_supports = True
+    txid = txid
+    nout = nout
+    claim_id = None
+    skip_validate_signatures = True
+    return call_lbryum('getnameclaims', raw, include_abandoned, include_supports, txid, nout,
+                       claim_id, skip_validate_signatures)
 
 
 class LbryumTest(unittest.TestCase):
@@ -100,6 +101,7 @@ class LbryumTest(unittest.TestCase):
         increment_blocks(6)
 
     def test_lbryum(self):
+
         self.setup()
         self._send_to_lbryum()
 
