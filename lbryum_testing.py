@@ -110,6 +110,7 @@ class LbryumTest(unittest.TestCase):
         self._test_update_same_block()
         self._test_abandon_same_block()
         self._test_claim_signed_update()
+        self._test_expire_renew()
 
         self._test_claim_reorg()
         self._test_abandon_reorg()
@@ -789,6 +790,43 @@ class LbryumTest(unittest.TestCase):
         out = call_lbryum('getclaimbyid', claim_out['claim_id'])
         self.assertEqual({}, out)
 
- 
+    @print_func
+    def _test_expire_renew(self):
+        claim_name = 'testexpirerenew'
+        broadcast=True
+        skip_validates_schema=True
+
+
+        # make claim and test to see if we can renew it
+        out = call_lbryum_claim(claim_name, 'test', 0.1)
+        txid = out['txid']
+        nout = out['nout']
+        claim_id = out['claim_id']
+        wait_for_lbrynet_sync('lbrycrd', out['txid'])
+        increment_blocks(6)
+
+        claims = call_lbryum_getnameclaims(out['txid'], out['nout'])
+        self.assertTrue(len(claims), 1)
+
+        out = call_lbryum('renewclaim', txid, nout, broadcast, skip_validates_schema)
+        self.assertTrue('txid' in out)
+        self.assertTrue('nout' in out)
+
+        # we should get the new renewed claim and it should replace the old claim
+        claims = call_lbryum_getnameclaims(out['txid'], out['nout'])
+        self.assertTrue(len(claims),1)
+
+        # try to renew the support
+        support = call_lbryum('support', claim_name, claim_id, 0.1)
+        wait_for_lbrynet_sync('lbrycrd', support['txid'])
+        increment_blocks(6)
+        out = call_lbryum('renewclaim', support['txid'], support['nout'], broadcast, skip_validates_schema)
+        self.assertTrue('txid' in out)
+        self.assertTrue('nout' in out)
+
+        claims = call_lbryum_getnameclaims(out['txid'], out['nout'])
+        self.assertTrue(len(claims), 1)
+
+
 if __name__ == '__main__':
     unittest.main()
