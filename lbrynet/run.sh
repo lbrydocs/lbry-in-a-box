@@ -1,7 +1,7 @@
 #!/bin/bash
 if [ "$1" == "lbryum-only" ]; then
     sleep 15
-    /app/bin/lbryum daemon start -D /data/lbryum
+    /app/bin/lbryum daemon start -D /data/lbryum -v
     tail -f /dev/null
 elif [ "$1" == "reflector-cluster" ]; then
     sleep 15
