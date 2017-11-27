@@ -15,10 +15,12 @@ RUN virtualenv /app \
 
 ADD lbryschema /src/lbryschema
 RUN /app/bin/pip install -r /src/lbryschema/requirements.txt
-RUN /app/bin/pip install -U /src/lbryschema
+RUN /app/bin/pip install /src/lbryschema
+
 
 ADD lbryum /src/lbryum
-RUN /app/bin/pip install -U /src/lbryum
+RUN /app/bin/pip install -r /src/lbryum/requirements.txt
+RUN /app/bin/pip install /src/lbryum
 
 ADD reflector-cluster /src/reflector-cluster
 ADD prism.yml /root/.prism.yml
@@ -31,7 +33,7 @@ RUN /app/bin/pip install /src/lbry
 
 # install reflector cluster after lbry, since reflector depends on it
 RUN /app/bin/pip install -r /src/reflector-cluster/requirements.txt
-RUN /app/bin/pip install -U /src/reflector-cluster
+RUN /app/bin/pip install /src/reflector-cluster
 
 RUN mkdir -p /data /data/lbryum /data/lbrynet /data/Downloads \
  && mkdir -p /home/lbry/.lbrynet
