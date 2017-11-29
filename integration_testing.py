@@ -35,6 +35,7 @@ class LbrynetTest(unittest.TestCase):
         self._test_publish('testname2', claim_amount=1, key_fee=1.0)
 
         self._test_batch_cmds()
+        self._test_renew()
         self._test_update()
         self._test_abandon()
         self._test_support()
@@ -204,7 +205,7 @@ class LbrynetTest(unittest.TestCase):
         make sure this test gets run first, so
         lbrynet has credits required to run some commands
         """
-        RECV_AMOUNT = 10
+        RECV_AMOUNT = 20
         SEND_AMOUNT = 1
         LBRYNET_SEND_SYNC_TIMEOUT = 80
         txid, address = self._send_from_lbrycrd(RECV_AMOUNT, lbrynets['lbrynet'])
@@ -280,7 +281,8 @@ class LbrynetTest(unittest.TestCase):
         self._increment_blocks(6)
         out = {'publish_txid': publish_txid, 'publish_nout': publish_nout, 'claim_id': claim_id,
                'key_fee_address': key_fee_address,
-               'expected_download_file': expected_download_file, 'file_name': test_pub_file_name}
+               'expected_download_file': expected_download_file, 'file_name': test_pub_file_name,
+               'outpoint':'{}:{}'.format(publish_txid, publish_nout)}
         return out
 
     # makes sure all key,value present in expected_dict is present
@@ -683,6 +685,50 @@ class LbrynetTest(unittest.TestCase):
         out = lbrynets['lbrynet'].resolve({"uri": "@somethingunclaimed/unclaimed", 'force': True})
         self._check_lbrynet_unclaimed_resolve(out)
 
+    @print_func
+    def _test_renew(self):
+        claim_name = 'testrenew'
+        claim_amount = 0.01
+
+        # publish
+        publish_out = self._publish(claim_name, claim_amount, key_fee=0)
+
+        # support
+        support_amount = 0.01
+        support_out = lbrynets['lbrynet'].claim_new_support(
+            {'name': claim_name, 'claim_id': publish_out['claim_id'], 'amount': support_amount})
+        support_outpoint = '{}:{}'.format(support_out['txid'],support_out['nout'])
+        self.assertTrue(wait_for_lbrynet_sync('lbrycrd', support_out['txid']))
+        self._increment_blocks(6)
+
+        # renew both claims
+        height = lbrynets['lbrynet'].status()['blockchain_status']['blocks']
+        renew_out = lbrynets['lbrynet'].claim_renew({'height':height+1000000})
+        self.assertTrue(len(renew_out), 2)
+
+
+        self.assertTrue(publish_out['outpoint'] in renew_out)
+        self.assertTrue(renew_out[publish_out['outpoint']]['success'])
+        self.assertTrue(support_outpoint in renew_out)
+        self.assertTrue(renew_out[support_outpoint]['success'])
+
+        self.assertEqual(publish_out['claim_id'], renew_out[publish_out['outpoint']]['claim_id'])
+        self.assertNotEqual(publish_out['publish_txid'], renew_out[publish_out['outpoint']]['txid'])
+        self.assertNotEqual(support_out['txid'], renew_out[support_outpoint]['txid'])
+
+        self.assertTrue(wait_for_lbrynet_sync('lbrycrd', renew_out[publish_out['outpoint']]['txid']))
+        self.assertTrue(wait_for_lbrynet_sync('lbrycrd', renew_out[support_outpoint]['txid']))
+
+        # renew again the publish by its outpoint
+        outpoint = '{}:{}'.format(
+            renew_out[publish_out['outpoint']]['txid'], renew_out[publish_out['outpoint']]['nout'])
+        renew_out = lbrynets['lbrynet'].claim_renew({'outpoint':outpoint})
+
+        self.assertTrue(outpoint in renew_out)
+        self.assertTrue(renew_out[outpoint]['success'])
+
+        self.assertTrue(wait_for_lbrynet_sync('lbrycrd', renew_out[outpoint]['txid']))
+        self._increment_blocks(6)
 
 
     @print_func
@@ -695,6 +741,8 @@ class LbrynetTest(unittest.TestCase):
 
 
         # test pagination
+
+
 
     @print_func
     def _test_misc(self):
