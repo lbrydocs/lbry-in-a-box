@@ -10,6 +10,7 @@ import unittest
 from urllib2 import URLError,HTTPError
 from httplib import BadStatusLine
 from socket import error
+from jsonrpc.common import RPCError
 import os
 
 from test_utils import *
@@ -221,7 +222,7 @@ class LbrynetTest(unittest.TestCase):
         self.assertEqual(0, out)
 
         # test error when trying to send more than what we have
-        with self.assertRaises(HTTPError):
+        with self.assertRaises(RPCError):
             out = lbrynets['lbrynet'].send_amount_to_address(
                 {'amount':RECV_AMOUNT+10, 'address':address})
 
