@@ -426,9 +426,6 @@ class LbrynetTest(unittest.TestCase):
         self.assertTrue(sd_hash in out)
         self.assertTrue(blob_hash in out)
 
-        out = lbrynets['reflector'].file_list()
-        self.assertTrue(len(out),1)
-
 
         # test to see if we can get peers from the dht with the hash
         # (reflector and original publishing node should have them)
