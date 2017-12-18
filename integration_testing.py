@@ -678,7 +678,7 @@ class LbrynetTest(unittest.TestCase):
 
         # test insuficient funds when publishing
         balance = lbrynets['lbrynet'].wallet_balance()
-        with self.assertRaises(HTTPError):
+        with self.assertRaises(RPCError):
             self._publish('insufficientpublish', balance+1, key_fee=0)
 
     @print_func
