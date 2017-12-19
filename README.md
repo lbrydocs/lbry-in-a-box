@@ -75,7 +75,8 @@ update the `lbry-in-a-box` branch.
 To run integration testing, first run 'bash sync_to_master.sh' in order
 to sync repositories to their respective masters on github. You can also
 specify which branch to sync lbrynet and lbryum to if you want to test
-a non master branch.
+a non master branch as shown below: 
+"bash sync_to_master.sh origin/some_lbry_branch origin/some_lbryum_branch"
 
 Finally, run 'python integration_testing.py' which will launch all the
 docker containers and run integration testing. Testing takes about 10 minutes
