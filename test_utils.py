@@ -15,10 +15,10 @@ dht_rpc_port = '5278'
 reflector_rpc_port = '5277'
 
 lbrynets = {}
-lbrynets['lbrynet'] = JSONRPCProxy.from_url("http://localhost:{}/lbryapi".format(lbrynet_rpc_port))
-lbrynets['dht'] = JSONRPCProxy.from_url("http://localhost:{}/lbryapi".format(dht_rpc_port))
+lbrynets['lbrynet'] = JSONRPCProxy.from_url("http://localhost:{}".format(lbrynet_rpc_port))
+lbrynets['dht'] = JSONRPCProxy.from_url("http://localhost:{}".format(dht_rpc_port))
 lbrynets['reflector'] = JSONRPCProxy.from_url(
-    "http://localhost:{}/lbryapi".format(reflector_rpc_port))
+    "http://localhost:{}".format(reflector_rpc_port))
 
 DOCKER_LOG_FILE = 'tmp.log'
 NUM_INITIAL_BLOCKS_GENERATED = 150
